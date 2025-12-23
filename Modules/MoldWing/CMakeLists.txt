@@ -1,2 +1,1 @@
-add_subdirectory(LibEx)
 add_subdirectory(VulkanEngine)

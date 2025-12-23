@@ -26,7 +26,7 @@ target_link_libraries(${TARGET_NAME}
         Vulkan::Vulkan
         glfw
         imgui::imgui
-        MyLibs::VulkanEngine
+        MoldWing::VulkanEngine
 )
 
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX->")
