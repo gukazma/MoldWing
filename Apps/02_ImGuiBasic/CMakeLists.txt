@@ -1,4 +1,4 @@
-set(TARGET_NAME CubeDemo)
+set(TARGET_NAME 02_ImGuiBasic)
 
 file(GLOB_RECURSE HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
 file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
@@ -19,25 +19,27 @@ set_target_properties(${TARGET_NAME} PROPERTIES CXX_EXTENSIONS OFF)
 # Find required packages
 find_package(Vulkan REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
-find_package(glm CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
 
 target_link_libraries(${TARGET_NAME}
     PRIVATE
         Vulkan::Vulkan
         glfw
-        glm::glm
+        imgui::imgui
         MoldWing::VulkanEngine
 )
 
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX->")
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive->")
 
-# Compile cube shaders to C++ headers
+# Compile shaders to C++ headers
 compile_shaders_to_headers(
     TARGET ${TARGET_NAME}
     SOURCES
-        ${CMAKE_SOURCE_DIR}/Apps/VulkanDemo/shaders/cube.vert
-        ${CMAKE_SOURCE_DIR}/Apps/VulkanDemo/shaders/cube.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cube.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/cube.frag
     OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders
     OPTIMIZE
 )
