@@ -45,6 +45,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_INSTALL_PREFIX}/bin)
 include(CMakeModules/doxygen.cmake)
 include(CMakeModules/dependency-graph.cmake)
 include(CMakeModules/formatting.cmake)
+include(CMakeModules/compile-shaders.cmake)
 # ---- Include guards ----
 if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
   message(

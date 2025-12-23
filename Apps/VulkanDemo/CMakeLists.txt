@@ -32,4 +32,14 @@ target_link_libraries(${TARGET_NAME}
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/WX->")
 target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive->")
 
+# Compile shaders to C++ headers
+compile_shaders_to_headers(
+    TARGET ${TARGET_NAME}
+    SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.vert
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders
+    OPTIMIZE
+)
+
 install(TARGETS ${TARGET_NAME})

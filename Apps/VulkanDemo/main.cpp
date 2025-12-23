@@ -1,8 +1,13 @@
 #include <MoldWing/VulkanEngine/Engine.h>
+#include <MoldWing/VulkanEngine/GraphicsPipeline.h>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
+
+// Include generated shader headers
+#include "shader.vert.h"
+#include "shader.frag.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -14,6 +19,7 @@ public:
     void run() {
         initWindow();
         initVulkanEngine();
+        initGraphicsPipeline();
         initImGui();
         mainLoop();
         cleanup();
@@ -22,6 +28,7 @@ public:
 private:
     GLFWwindow* window = nullptr;
     VulkanEngine::Engine* engine = nullptr;
+    VulkanEngine::GraphicsPipeline* graphicsPipeline = nullptr;
     VkDescriptorPool imguiDescriptorPool = VK_NULL_HANDLE;
 
     const uint32_t WIDTH = 800;
@@ -42,6 +49,17 @@ private:
         config.maxFramesInFlight = 2;
 
         engine = new VulkanEngine::Engine(window, config);
+    }
+
+    void initGraphicsPipeline() {
+        // Create graphics pipeline using embedded shaders
+        graphicsPipeline = new VulkanEngine::GraphicsPipeline(
+            engine->getDevice(),
+            engine->getRenderPass()->getHandle(),
+            Shaders::shader_vert_data, Shaders::shader_vert_size,
+            Shaders::shader_frag_data, Shaders::shader_frag_size,
+            engine->getSwapchain()->getExtent()
+        );
     }
 
     void initImGui() {
@@ -159,7 +177,11 @@ private:
 
             cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 
-            // Render ImGui
+            // Draw triangle
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline->getHandle());
+            cmd.draw(3, 1, 0, 0);
+
+            // Render ImGui on top
             ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), static_cast<VkCommandBuffer>(cmd));
 
             cmd.endRenderPass();
@@ -176,6 +198,7 @@ private:
             vkDestroyDescriptorPool(vkDevice, imguiDescriptorPool, nullptr);
         }
 
+        delete graphicsPipeline;
         delete engine;
 
         glfwDestroyWindow(window);

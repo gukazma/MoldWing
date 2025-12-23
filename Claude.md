@@ -19,7 +19,8 @@ MoldWing/
 ├── CMakeModules/                     # 自定义 CMake 模块
 │   ├── doxygen.cmake                # 文档生成
 │   ├── formatting.cmake             # 代码格式化
-│   └── dependency-graph.cmake       # 依赖图生成
+│   ├── dependency-graph.cmake       # 依赖图生成
+│   └── compile-shaders.cmake        # Shader 编译模块
 ├── Modules/                          # 库模块
 │   └── MoldWing/                    # MoldWing 命名空间
 │       └── VulkanEngine/            # Vulkan 引擎动态库
@@ -281,6 +282,73 @@ cmake --build --preset vs2022-x64-debug --target VulkanDemo
 
 3. **Graphviz** - 依赖关系图（可选）
    - 输出: `Docs/DependencyGraph/`
+
+### Shader 编译系统
+
+**模块**: [compile-shaders.cmake](CMakeModules/compile-shaders.cmake)
+
+自动化 GLSL/HLSL shader 编译成 SPIR-V 格式，支持 glslc 和 glslangValidator。
+
+#### 功能特性
+
+- 自动查找 Vulkan SDK 中的 shader 编译器（优先 glslc）
+- 构建时增量编译（仅编译修改过的 shader）
+- 支持 include 目录和预处理器定义
+- 支持优化选项（Release 模式自动启用）
+- 自动安装编译后的 .spv 文件
+
+#### 使用方法
+
+```cmake
+# 在 CMakeLists.txt 中
+compile_shaders(
+    TARGET YourApp
+    SOURCES
+        shaders/shader.vert
+        shaders/shader.frag
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders
+    INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/include
+    DEFINITIONS DEBUG_MODE
+    OPTIMIZE
+)
+
+# 安装到输出目录
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/shaders/
+        DESTINATION bin/shaders
+        FILES_MATCHING PATTERN "*.spv")
+```
+
+#### API 参数
+
+- **TARGET**: 依赖 shader 的目标名称（必需）
+- **SOURCES**: shader 源文件列表（必需）
+- **OUTPUT_DIR**: 输出目录（默认: `${CMAKE_CURRENT_BINARY_DIR}/shaders`）
+- **INCLUDE_DIRS**: shader include 目录列表
+- **DEFINITIONS**: 预处理器定义
+- **OPTIMIZE**: 启用优化（Debug 默认 OFF，Release 默认 ON）
+
+#### 示例输出
+
+```
+-- Found glslc: C:/VulkanSDK/1.4.321.1/Bin/glslc.exe
+-- Configured shader compilation for target: VulkanDemo
+--   - Shaders: shader.vert;shader.frag
+--   - Output: builds/vs2022-x64/Apps/VulkanDemo/shaders
+...
+Compiling shader: shader.vert -> shader.vert.spv
+Compiling shader: shader.frag -> shader.frag.spv
+```
+
+#### VulkanDemo 示例
+
+VulkanDemo 包含两个示例 shader:
+- [shader.vert](Apps/VulkanDemo/shaders/shader.vert) - 顶点着色器（彩色三角形）
+- [shader.frag](Apps/VulkanDemo/shaders/shader.frag) - 片段着色器
+
+编译输出:
+- `builds/vs2022-x64/Apps/VulkanDemo/shaders/shader.vert.spv`
+- `builds/vs2022-x64/Apps/VulkanDemo/shaders/shader.frag.spv`
+- 安装至: `install/vs2022-x64/bin/shaders/`
 
 ### IDE 支持
 
