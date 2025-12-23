@@ -33,12 +33,14 @@ Engine::Engine(GLFWwindow* window, const EngineConfig& config)
     // Create render pass
     renderPass = std::make_unique<RenderPass>(
         device->getHandle(),
-        swapchain->getImageFormat()
+        swapchain->getImageFormat(),
+        swapchain->getDepthFormat()
     );
 
     // Create framebuffers
     renderPass->createFramebuffers(
         swapchain->getImageViews(),
+        swapchain->getDepthImageView(),
         swapchain->getExtent()
     );
 

@@ -10,28 +10,30 @@ namespace VulkanEngine {
 GraphicsPipeline::GraphicsPipeline(Device* device, vk::RenderPass renderPass,
                                    const std::string& vertShaderPath,
                                    const std::string& fragShaderPath,
-                                   vk::Extent2D extent)
+                                   vk::Extent2D extent,
+                                   const PipelineConfig* config)
     : device(device) {
 
     // Load shader files
     auto vertShaderCode = readFile(vertShaderPath);
     auto fragShaderCode = readFile(fragShaderPath);
 
-    createPipeline(renderPass, vertShaderCode, fragShaderCode, extent);
+    createPipeline(renderPass, vertShaderCode, fragShaderCode, extent, config);
 }
 
 // Constructor using embedded shader data (compile-time)
 GraphicsPipeline::GraphicsPipeline(Device* device, vk::RenderPass renderPass,
                                    const uint8_t* vertShaderData, size_t vertShaderSize,
                                    const uint8_t* fragShaderData, size_t fragShaderSize,
-                                   vk::Extent2D extent)
+                                   vk::Extent2D extent,
+                                   const PipelineConfig* config)
     : device(device) {
 
     // Convert raw data to vectors
     std::vector<uint8_t> vertShaderCode(vertShaderData, vertShaderData + vertShaderSize);
     std::vector<uint8_t> fragShaderCode(fragShaderData, fragShaderData + fragShaderSize);
 
-    createPipeline(renderPass, vertShaderCode, fragShaderCode, extent);
+    createPipeline(renderPass, vertShaderCode, fragShaderCode, extent, config);
 }
 
 GraphicsPipeline::~GraphicsPipeline() {
@@ -54,7 +56,8 @@ GraphicsPipeline::~GraphicsPipeline() {
 void GraphicsPipeline::createPipeline(vk::RenderPass renderPass,
                                      const std::vector<uint8_t>& vertCode,
                                      const std::vector<uint8_t>& fragCode,
-                                     vk::Extent2D extent) {
+                                     vk::Extent2D extent,
+                                     const PipelineConfig* config) {
     // Create shader modules
     vertShaderModule = createShaderModule(vertCode);
     fragShaderModule = createShaderModule(fragCode);
@@ -72,14 +75,21 @@ void GraphicsPipeline::createPipeline(vk::RenderPass renderPass,
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    // Vertex input (empty for now, vertices are hardcoded in shader)
+    // Vertex input
     vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    if (config && !config->vertexBindings.empty()) {
+        vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(config->vertexBindings.size());
+        vertexInputInfo.pVertexBindingDescriptions = config->vertexBindings.data();
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(config->vertexAttributes.size());
+        vertexInputInfo.pVertexAttributeDescriptions = config->vertexAttributes.data();
+    } else {
+        vertexInputInfo.vertexBindingDescriptionCount = 0;
+        vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    }
 
     // Input assembly
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
-    inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+    inputAssembly.topology = config ? config->topology : vk::PrimitiveTopology::eTriangleList;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     // Viewport and scissor
@@ -107,14 +117,24 @@ void GraphicsPipeline::createPipeline(vk::RenderPass renderPass,
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = vk::PolygonMode::eFill;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = vk::CullModeFlagBits::eBack;
-    rasterizer.frontFace = vk::FrontFace::eClockwise;
+    rasterizer.cullMode = config ? config->cullMode : vk::CullModeFlagBits::eBack;
+    rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
     rasterizer.depthBiasEnable = VK_FALSE;
 
     // Multisampling
     vk::PipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+    // Depth stencil
+    vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+    if (config && config->enableDepthTest) {
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = vk::CompareOp::eLess;
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.stencilTestEnable = VK_FALSE;
+    }
 
     // Color blending
     vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
@@ -130,9 +150,14 @@ void GraphicsPipeline::createPipeline(vk::RenderPass renderPass,
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments = &colorBlendAttachment;
 
-    // Pipeline layout
+    // Pipeline layout (with descriptor sets if provided)
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.setLayoutCount = 0;
+    if (config && !config->descriptorSetLayouts.empty()) {
+        pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(config->descriptorSetLayouts.size());
+        pipelineLayoutInfo.pSetLayouts = config->descriptorSetLayouts.data();
+    } else {
+        pipelineLayoutInfo.setLayoutCount = 0;
+    }
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
     pipelineLayout = device->getHandle().createPipelineLayout(pipelineLayoutInfo);
@@ -146,6 +171,7 @@ void GraphicsPipeline::createPipeline(vk::RenderPass renderPass,
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = (config && config->enableDepthTest) ? &depthStencil : nullptr;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.renderPass = renderPass;

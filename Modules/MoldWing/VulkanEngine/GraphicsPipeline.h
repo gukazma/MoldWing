@@ -10,19 +10,30 @@ namespace VulkanEngine {
 
 class Device;
 
+struct PipelineConfig {
+    std::vector<vk::VertexInputBindingDescription> vertexBindings;
+    std::vector<vk::VertexInputAttributeDescription> vertexAttributes;
+    std::vector<vk::DescriptorSetLayout> descriptorSetLayouts;
+    vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList;
+    vk::CullModeFlagBits cullMode = vk::CullModeFlagBits::eBack;
+    bool enableDepthTest = false;
+};
+
 class VulkanEngine_API GraphicsPipeline {
 public:
     // Constructor using file paths (runtime loading)
     GraphicsPipeline(Device* device, vk::RenderPass renderPass,
                      const std::string& vertShaderPath,
                      const std::string& fragShaderPath,
-                     vk::Extent2D extent);
+                     vk::Extent2D extent,
+                     const PipelineConfig* config = nullptr);
 
     // Constructor using embedded shader data (compile-time)
     GraphicsPipeline(Device* device, vk::RenderPass renderPass,
                      const uint8_t* vertShaderData, size_t vertShaderSize,
                      const uint8_t* fragShaderData, size_t fragShaderSize,
-                     vk::Extent2D extent);
+                     vk::Extent2D extent,
+                     const PipelineConfig* config = nullptr);
 
     ~GraphicsPipeline();
 
@@ -40,7 +51,8 @@ private:
     void createPipeline(vk::RenderPass renderPass,
                        const std::vector<uint8_t>& vertCode,
                        const std::vector<uint8_t>& fragCode,
-                       vk::Extent2D extent);
+                       vk::Extent2D extent,
+                       const PipelineConfig* config);
 
     std::vector<uint8_t> readFile(const std::string& filename);
     vk::ShaderModule createShaderModule(const std::vector<uint8_t>& code);
