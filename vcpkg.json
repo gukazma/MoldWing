@@ -4,6 +4,7 @@
   "dependencies": [
     "gtest",
     "vulkan",
+    "vulkan-hpp",
     "glfw3",
     {
       "name": "imgui",
