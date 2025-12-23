@@ -1,3 +1,4 @@
 add_subdirectory(01_HelloWorld)
 add_subdirectory(02_ImGuiBasic)
 add_subdirectory(03_RotatingCube)
+add_subdirectory(04_CameraControl)
