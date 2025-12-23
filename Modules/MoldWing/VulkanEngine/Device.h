@@ -4,7 +4,7 @@
 #include <vector>
 #include <optional>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -40,4 +40,4 @@ private:
     QueueFamilyIndices queueFamilyIndices;
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing

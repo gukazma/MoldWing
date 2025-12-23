@@ -2,7 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <stdexcept>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 Engine::Engine(GLFWwindow* window, const EngineConfig& config)
     : config(config) {
@@ -155,4 +155,4 @@ void Engine::cleanup() {
     instance.reset();
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

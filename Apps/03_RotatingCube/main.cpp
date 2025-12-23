@@ -118,12 +118,12 @@ public:
 
 private:
     GLFWwindow* window = nullptr;
-    VulkanEngine::Engine* engine = nullptr;
-    VulkanEngine::GraphicsPipeline* cubePipeline = nullptr;
+    MoldWing::Engine* engine = nullptr;
+    MoldWing::GraphicsPipeline* cubePipeline = nullptr;
 
-    VulkanEngine::Buffer* vertexBuffer = nullptr;
-    VulkanEngine::Buffer* indexBuffer = nullptr;
-    std::vector<VulkanEngine::Buffer*> uniformBuffers;
+    MoldWing::Buffer* vertexBuffer = nullptr;
+    MoldWing::Buffer* indexBuffer = nullptr;
+    std::vector<MoldWing::Buffer*> uniformBuffers;
 
     vk::DescriptorSetLayout descriptorSetLayout;
     vk::DescriptorPool descriptorPool;
@@ -145,24 +145,24 @@ private:
     }
 
     void initVulkanEngine() {
-        VulkanEngine::EngineConfig config;
+        MoldWing::EngineConfig config;
         config.appName = "3D Cube Demo";
         config.width = WIDTH;
         config.height = HEIGHT;
         config.maxFramesInFlight = MAX_FRAMES_IN_FLIGHT;
 
-        engine = new VulkanEngine::Engine(window, config);
+        engine = new MoldWing::Engine(window, config);
     }
 
     void createBuffers() {
         // Create vertex buffer
-        vertexBuffer = VulkanEngine::Buffer::createWithData(
+        vertexBuffer = MoldWing::Buffer::createWithData(
             engine->getDevice(),
             cubeVertices,
             vk::BufferUsageFlagBits::eVertexBuffer);
 
         // Create index buffer
-        indexBuffer = VulkanEngine::Buffer::createWithData(
+        indexBuffer = MoldWing::Buffer::createWithData(
             engine->getDevice(),
             cubeIndices,
             vk::BufferUsageFlagBits::eIndexBuffer);
@@ -170,7 +170,7 @@ private:
         // Create uniform buffers (one per frame in flight)
         uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            uniformBuffers[i] = new VulkanEngine::Buffer(
+            uniformBuffers[i] = new MoldWing::Buffer(
                 engine->getDevice(),
                 sizeof(UniformBufferObject),
                 vk::BufferUsageFlagBits::eUniformBuffer,
@@ -235,7 +235,7 @@ private:
     }
 
     void createGraphicsPipeline() {
-        VulkanEngine::PipelineConfig pipelineConfig{};
+        MoldWing::PipelineConfig pipelineConfig{};
 
         // Vertex input
         auto bindingDescription = Vertex::getBindingDescription();
@@ -253,7 +253,7 @@ private:
         pipelineConfig.enableDepthTest = true;
         pipelineConfig.cullMode = vk::CullModeFlagBits::eBack; // Enable backface culling
 
-        cubePipeline = new VulkanEngine::GraphicsPipeline(
+        cubePipeline = new MoldWing::GraphicsPipeline(
             engine->getDevice(),
             engine->getRenderPass()->getHandle(),
             Shaders::cube_vert_data, Shaders::cube_vert_size,

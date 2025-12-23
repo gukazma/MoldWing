@@ -4,7 +4,7 @@
 #include <vulkan/vulkan.hpp>
 #include <vector>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 class Device;
 
@@ -58,4 +58,4 @@ Buffer* Buffer::createWithData(Device* device, const std::vector<T>& data,
     return buffer;
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

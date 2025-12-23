@@ -6,7 +6,7 @@
 #include <vector>
 #include <cstdint>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 class Device;
 
@@ -58,4 +58,4 @@ private:
     vk::ShaderModule createShaderModule(const std::vector<uint8_t>& code);
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing

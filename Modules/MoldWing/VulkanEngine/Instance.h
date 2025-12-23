@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 class VulkanEngine_API Instance {
 public:
@@ -20,4 +20,4 @@ private:
     vk::Instance instance;
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing

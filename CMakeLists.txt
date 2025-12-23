@@ -22,7 +22,6 @@ message("Configure project: ${ROOT_NAME}")
 project(${ROOT_NAME} VERSION 0.1 LANGUAGES CXX)
 
 option(ENABLE_DOCS "Enable doxygen docs" ON)
-option(ENABLE_QTAPP "Enable config Qt app" OFF)
 option(PUBLISH_APP "PUBLISH APP" OFF)
 
 # just for qt
@@ -63,7 +62,7 @@ if(ENABLE_DOCS)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/../Docs)
   build_docs(PROCESS_DOXYFILE TRUE DOXYFILE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Docs/Doxyfile.in)
 endif()
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT DemoApp)
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT 01_HelloWorld)
 
 if(CLANG_FORMAT_EXE)
   message(STATUS "Found clang format ............ Configuring ..............")

@@ -3,7 +3,7 @@
 #include <vulkan/vulkan.hpp>
 #include <vector>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 class VulkanEngine_API CommandBufferManager {
 public:
@@ -36,4 +36,4 @@ private:
     std::vector<vk::Fence> inFlightFences;
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing

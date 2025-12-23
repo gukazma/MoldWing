@@ -1,7 +1,7 @@
 #include "CommandBufferManager.h"
 #include <stdexcept>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 CommandBufferManager::CommandBufferManager(vk::Device device, uint32_t queueFamilyIndex, uint32_t maxFramesInFlight)
     : device(device) {
@@ -64,4 +64,4 @@ void CommandBufferManager::createSyncObjects(vk::Device device, uint32_t count) 
     }
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

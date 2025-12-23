@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <array>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 RenderPass::RenderPass(vk::Device device, vk::Format swapchainImageFormat, vk::Format depthFormat)
     : device(device) {
@@ -99,4 +99,4 @@ void RenderPass::createFramebuffers(const std::vector<vk::ImageView>& swapchainI
     }
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

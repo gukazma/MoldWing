@@ -1,7 +1,7 @@
 #include "Instance.h"
 #include <stdexcept>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 Instance::Instance(const std::string& appName, uint32_t appVersion,
                    const std::vector<const char*>& extensions,
@@ -32,4 +32,4 @@ Instance::~Instance() {
     }
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

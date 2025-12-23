@@ -27,8 +27,8 @@ public:
 
 private:
     GLFWwindow* window = nullptr;
-    VulkanEngine::Engine* engine = nullptr;
-    VulkanEngine::GraphicsPipeline* graphicsPipeline = nullptr;
+    MoldWing::Engine* engine = nullptr;
+    MoldWing::GraphicsPipeline* graphicsPipeline = nullptr;
     VkDescriptorPool imguiDescriptorPool = VK_NULL_HANDLE;
 
     const uint32_t WIDTH = 800;
@@ -42,18 +42,18 @@ private:
     }
 
     void initVulkanEngine() {
-        VulkanEngine::EngineConfig config;
+        MoldWing::EngineConfig config;
         config.appName = "Vulkan ImGui Demo";
         config.width = WIDTH;
         config.height = HEIGHT;
         config.maxFramesInFlight = 2;
 
-        engine = new VulkanEngine::Engine(window, config);
+        engine = new MoldWing::Engine(window, config);
     }
 
     void initGraphicsPipeline() {
         // Create graphics pipeline using embedded shaders
-        graphicsPipeline = new VulkanEngine::GraphicsPipeline(
+        graphicsPipeline = new MoldWing::GraphicsPipeline(
             engine->getDevice(),
             engine->getRenderPass()->getHandle(),
             Shaders::shader_vert_data, Shaders::shader_vert_size,

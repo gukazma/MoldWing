@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <set>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 Device::Device(vk::Instance instance, vk::SurfaceKHR surface) {
     pickPhysicalDevice(instance, surface);
@@ -97,4 +97,4 @@ QueueFamilyIndices Device::findQueueFamilies(vk::PhysicalDevice device, vk::Surf
     return indices;
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

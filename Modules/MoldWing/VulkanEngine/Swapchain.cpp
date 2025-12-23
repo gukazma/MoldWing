@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <algorithm>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 Swapchain::Swapchain(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface,
                      uint32_t width, uint32_t height, const QueueFamilyIndices& indices)
@@ -203,4 +203,4 @@ vk::Format Swapchain::findDepthFormat(vk::PhysicalDevice physicalDevice) {
     );
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

@@ -4,7 +4,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 // Constructor using file paths (runtime loading)
 GraphicsPipeline::GraphicsPipeline(Device* device, vk::RenderPass renderPass,
@@ -209,4 +209,4 @@ vk::ShaderModule GraphicsPipeline::createShaderModule(const std::vector<uint8_t>
     return device->getHandle().createShaderModule(createInfo);
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

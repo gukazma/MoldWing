@@ -4,7 +4,7 @@
 #include <vulkan/vulkan.hpp>
 #include <vector>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 class VulkanEngine_API Swapchain {
 public:
@@ -49,4 +49,4 @@ private:
     vk::Format depthFormat;
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing

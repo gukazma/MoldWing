@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <cstring>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 Buffer::Buffer(Device* device, vk::DeviceSize size,
                vk::BufferUsageFlags usage,
@@ -74,4 +74,4 @@ uint32_t Buffer::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags pro
     throw std::runtime_error("Failed to find suitable memory type!");
 }
 
-} // namespace VulkanEngine
+} // namespace MoldWing

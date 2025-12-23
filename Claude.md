@@ -101,7 +101,7 @@ VulkanEngine 是一个完全使用 **vulkan-hpp**（C++ 风格的 Vulkan API）�
 #### 关键 API
 
 ```cpp
-namespace VulkanEngine {
+namespace MoldWing {
 
 // 引擎配置
 struct EngineConfig {
@@ -132,19 +132,19 @@ public:
     void waitIdle();
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing
 ```
 
 #### 使用示例
 
 ```cpp
 // 1. 创建引擎
-VulkanEngine::EngineConfig config;
+MoldWing::EngineConfig config;
 config.appName = "My Vulkan App";
 config.width = 1280;
 config.height = 720;
 
-auto engine = new VulkanEngine::Engine(window, config);
+auto engine = new MoldWing::Engine(window, config);
 
 // 2. 渲染循环
 while (!glfwWindowShouldClose(window)) {
@@ -210,11 +210,11 @@ target_link_libraries(YourApp
 ```cpp
 class VulkanDemo {
     GLFWwindow* window;
-    VulkanEngine::Engine* engine;
+    MoldWing::Engine* engine;
     VkDescriptorPool imguiDescriptorPool;
 
     void initWindow();           // GLFW 窗口初始化
-    void initVulkanEngine();     // 创建 VulkanEngine 实例
+    void initVulkanEngine();     // 创建 MoldWing 引擎实例
     void initImGui();            // ImGui 初始化
     void mainLoop();             // 主循环
     void drawFrame();            // 帧渲染

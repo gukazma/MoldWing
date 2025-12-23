@@ -3,7 +3,7 @@
 #include <vulkan/vulkan.hpp>
 #include <vector>
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 class VulkanEngine_API RenderPass {
 public:
@@ -24,4 +24,4 @@ private:
     std::vector<vk::Framebuffer> framebuffers;
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing

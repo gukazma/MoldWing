@@ -11,7 +11,7 @@
 
 struct GLFWwindow;
 
-namespace VulkanEngine {
+namespace MoldWing {
 
 struct EngineConfig {
     std::string appName = "VulkanApp";
@@ -55,4 +55,4 @@ private:
     size_t currentFrame = 0;
 };
 
-} // namespace VulkanEngine
+} // namespace MoldWing
