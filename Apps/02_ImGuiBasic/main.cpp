@@ -6,8 +6,8 @@
 #include <imgui_impl_vulkan.h>
 
 // Include generated shader headers
-#include "shader.vert.h"
-#include "shader.frag.h"
+#include <MoldWing/Shaders/shader.vert.h>
+#include <MoldWing/Shaders/shader.frag.h>
 
 #include <iostream>
 #include <stdexcept>

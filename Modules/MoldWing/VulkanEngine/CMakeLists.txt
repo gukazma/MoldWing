@@ -32,11 +32,15 @@ target_compile_options(${TARGET_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:
 # Find Vulkan
 find_package(Vulkan REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
+find_package(OpenCV REQUIRED)
 
 # Link dependencies
 target_link_libraries(${TARGET_NAME} PUBLIC
     Vulkan::Vulkan
     glfw
+    opencv_core
+    opencv_imgcodecs
+    opencv_imgproc
 )
 
 target_include_directories(

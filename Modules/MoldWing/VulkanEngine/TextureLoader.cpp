@@ -1,4 +1,5 @@
 #include "TextureLoader.h"
+#include "Buffer.h"
 #include <opencv2/opencv.hpp>
 #include <stdexcept>
 #include <iostream>

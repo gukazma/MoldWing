@@ -6,8 +6,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 // Include generated shader headers
-#include "cube.vert.h"
-#include "cube.frag.h"
+#include <MoldWing/Shaders/cube.vert.h>
+#include <MoldWing/Shaders/cube.frag.h>
 
 #include <iostream>
 #include <stdexcept>

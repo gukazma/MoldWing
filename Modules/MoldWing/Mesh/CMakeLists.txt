@@ -21,6 +21,7 @@ target_include_directories(${TARGET_NAME}
 
 target_compile_features(${TARGET_NAME} PUBLIC cxx_std_17)
 set_target_properties(${TARGET_NAME} PROPERTIES CXX_EXTENSIONS OFF)
+set_target_properties(${TARGET_NAME} PROPERTIES FOLDER Modules/MoldWing)
 
 # Find required packages
 find_package(CGAL REQUIRED)

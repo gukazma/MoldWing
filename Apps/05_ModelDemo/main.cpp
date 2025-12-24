@@ -2,17 +2,16 @@
 #include <MoldWing/VulkanEngine/GraphicsPipeline.h>
 #include <MoldWing/VulkanEngine/Buffer.h>
 #include <MoldWing/VulkanEngine/Image.h>
+#include <MoldWing/VulkanEngine/TextureLoader.h>
 #include <MoldWing/Mesh/Mesh.h>
-
-#include "TextureLoader.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 // Include generated shader headers
-#include "model.vert.h"
-#include "model.frag.h"
+#include <MoldWing/Shaders/model.vert.h>
+#include <MoldWing/Shaders/model.frag.h>
 
 #include <iostream>
 #include <stdexcept>

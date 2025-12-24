@@ -6,11 +6,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 // Include generated shader headers
-#include "cube.vert.h"
-#include "cube.frag.h"
+#include <MoldWing/Shaders/cube.vert.h>
+#include <MoldWing/Shaders/cube.frag.h>
 
 // Include our camera class
-#include "Camera.h"
+#include <MoldWing/VulkanEngine/Camera.h>
 
 #include <iostream>
 #include <stdexcept>
