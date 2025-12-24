@@ -245,7 +245,7 @@ private:
     const uint32_t WIDTH = 1280;
     const uint32_t HEIGHT = 720;
     const int MAX_FRAMES_IN_FLIGHT = 2;
-    const int CUBE_GRID_SIZE = 3;  // 3x3x3 = 27 cubes
+    const int CUBE_GRID_SIZE = 65;  // 65x65x65 = 274,625 cubes (~10000x)
     const float CUBE_SPACING = 1.5f;
 
     void initWindow() {
@@ -261,9 +261,9 @@ private:
         glfwSetCursorPosCallback(window, cursorPosCallback);
         glfwSetScrollCallback(window, scrollCallback);
 
-        // Initialize camera
+        // Initialize camera - position adjusted for large scene (65^3 cubes)
         camera = MoldWing::Camera(
-            glm::vec3(6.0f, 4.0f, 6.0f),
+            glm::vec3(100.0f, 70.0f, 100.0f),
             glm::vec3(0.0f, 0.0f, 0.0f),
             glm::vec3(0.0f, 1.0f, 0.0f)
         );
@@ -384,18 +384,22 @@ private:
             vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR |
             vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
-        // Generate 3x3x3 cube instances
+        // Generate NxNxN cube instances
         instances.resize(CUBE_GRID_SIZE * CUBE_GRID_SIZE * CUBE_GRID_SIZE);
+        int halfSize = CUBE_GRID_SIZE / 2;
         int idx = 0;
-        for (int x = -1; x <= 1; x++) {
-            for (int y = -1; y <= 1; y++) {
-                for (int z = -1; z <= 1; z++) {
+        for (int x = -halfSize; x <= halfSize; x++) {
+            for (int y = -halfSize; y <= halfSize; y++) {
+                for (int z = -halfSize; z <= halfSize; z++) {
                     glm::vec3 pos(x * CUBE_SPACING, y * CUBE_SPACING, z * CUBE_SPACING);
                     instances[idx].model = glm::translate(glm::mat4(1.0f), pos);
                     instances[idx].color = glm::vec4(0.0f);  // No highlight
                     idx++;
+                    if (idx >= static_cast<int>(instances.size())) break;
                 }
+                if (idx >= static_cast<int>(instances.size())) break;
             }
+            if (idx >= static_cast<int>(instances.size())) break;
         }
 
         // Create instance buffer
@@ -842,7 +846,7 @@ private:
         float ndcY = 1.0f - (2.0f * mouseY / HEIGHT);  // Flip Y for screen coords
 
         // Get matrices - use standard projection (NO Vulkan Y flip for ray calculation)
-        glm::mat4 proj = glm::perspective(glm::radians(45.0f), WIDTH / (float)HEIGHT, 0.1f, 100.0f);
+        glm::mat4 proj = glm::perspective(glm::radians(45.0f), WIDTH / (float)HEIGHT, 0.1f, 500.0f);
         // Note: Do NOT apply Vulkan Y flip here, it's only for rendering
         glm::mat4 view = camera.getViewMatrix();
 
@@ -936,7 +940,7 @@ private:
     void updateUniformBuffer(uint32_t currentFrame) {
         UniformBufferObject ubo{};
         ubo.view = camera.getViewMatrix();
-        ubo.proj = glm::perspective(glm::radians(45.0f), WIDTH / (float)HEIGHT, 0.1f, 100.0f);
+        ubo.proj = glm::perspective(glm::radians(45.0f), WIDTH / (float)HEIGHT, 0.1f, 500.0f);
         ubo.proj[1][1] *= -1;
         uniformBuffers[currentFrame]->copyData(&ubo, sizeof(ubo));
     }
