@@ -19,6 +19,7 @@ struct EngineConfig {
     uint32_t width = 800;
     uint32_t height = 600;
     uint32_t maxFramesInFlight = 2;
+    bool enableRayTracing = false;
 };
 
 class VulkanEngine_API Engine {

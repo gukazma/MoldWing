@@ -1,0 +1,67 @@
+#version 460
+#extension GL_EXT_ray_query : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+// 加速结构
+layout(set = 0, binding = 0) uniform accelerationStructureEXT tlas;
+
+// 射线参数输入
+layout(set = 0, binding = 1) uniform RayParams {
+    vec4 origin;      // xyz = origin, w = tMin
+    vec4 direction;   // xyz = direction, w = tMax
+} ray;
+
+// 查询结果输出
+layout(set = 0, binding = 2) buffer HitResult {
+    int   hit;           // 是否命中 (0/1)
+    int   instanceId;    // 命中的 Cube 索引 (0-26)
+    int   primitiveId;   // 命中的三角形索引
+    float hitT;          // 射线参数 t（距离）
+    vec4  hitPoint;      // xyz = 世界空间交点, w = unused
+    vec4  barycentrics;  // xy = 重心坐标, zw = unused
+} result;
+
+void main() {
+    // 初始化 Ray Query
+    rayQueryEXT rayQuery;
+
+    rayQueryInitializeEXT(
+        rayQuery,
+        tlas,
+        gl_RayFlagsOpaqueEXT,  // 所有几何都是不透明的
+        0xFF,                   // cull mask
+        ray.origin.xyz,
+        ray.origin.w,           // tMin
+        ray.direction.xyz,
+        ray.direction.w         // tMax
+    );
+
+    // 遍历加速结构
+    while (rayQueryProceedEXT(rayQuery)) {
+        // 对于不透明几何，自动接受最近交点
+        // 如果需要自定义逻辑，可以在这里处理
+    }
+
+    // 检查是否有交点
+    if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT) {
+        result.hit = 1;
+        result.hitT = rayQueryGetIntersectionTEXT(rayQuery, true);
+        result.instanceId = rayQueryGetIntersectionInstanceIdEXT(rayQuery, true);
+        result.primitiveId = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+
+        // 计算交点位置
+        result.hitPoint = vec4(ray.origin.xyz + ray.direction.xyz * result.hitT, 1.0);
+
+        // 获取重心坐标
+        vec2 bary = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
+        result.barycentrics = vec4(bary, 0.0, 0.0);
+    } else {
+        result.hit = 0;
+        result.instanceId = -1;
+        result.primitiveId = -1;
+        result.hitT = -1.0;
+        result.hitPoint = vec4(0.0);
+        result.barycentrics = vec4(0.0);
+    }
+}

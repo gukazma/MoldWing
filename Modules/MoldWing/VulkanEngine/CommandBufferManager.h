@@ -23,12 +23,18 @@ public:
     vk::Semaphore getRenderFinishedSemaphore(size_t index) const { return renderFinishedSemaphores[index]; }
     vk::Fence getInFlightFence(size_t index) const { return inFlightFences[index]; }
 
+    // Single time command helpers
+    void setGraphicsQueue(vk::Queue queue) { graphicsQueue = queue; }
+    vk::CommandBuffer beginSingleTimeCommands();
+    void endSingleTimeCommands(vk::CommandBuffer commandBuffer);
+
 private:
     void createCommandPool(vk::Device device, uint32_t queueFamilyIndex);
     void createCommandBuffers(vk::Device device, uint32_t count);
     void createSyncObjects(vk::Device device, uint32_t count);
 
     vk::Device device;
+    vk::Queue graphicsQueue;
     vk::CommandPool commandPool;
     std::vector<vk::CommandBuffer> commandBuffers;
     std::vector<vk::Semaphore> imageAvailableSemaphores;

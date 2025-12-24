@@ -11,7 +11,7 @@ Instance::Instance(const std::string& appName, uint32_t appVersion,
     appInfo.applicationVersion = appVersion;
     appInfo.pEngineName = "VulkanEngine";
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_0;
+    appInfo.apiVersion = VK_API_VERSION_1_2;  // Required for ray tracing features
 
     vk::InstanceCreateInfo createInfo{};
     createInfo.pApplicationInfo = &appInfo;

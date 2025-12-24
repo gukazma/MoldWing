@@ -64,4 +64,32 @@ void CommandBufferManager::createSyncObjects(vk::Device device, uint32_t count) 
     }
 }
 
+vk::CommandBuffer CommandBufferManager::beginSingleTimeCommands() {
+    vk::CommandBufferAllocateInfo allocInfo{};
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = vk::CommandBufferLevel::ePrimary;
+    allocInfo.commandBufferCount = 1;
+
+    vk::CommandBuffer commandBuffer = device.allocateCommandBuffers(allocInfo)[0];
+
+    vk::CommandBufferBeginInfo beginInfo{};
+    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+    commandBuffer.begin(beginInfo);
+
+    return commandBuffer;
+}
+
+void CommandBufferManager::endSingleTimeCommands(vk::CommandBuffer commandBuffer) {
+    commandBuffer.end();
+
+    vk::SubmitInfo submitInfo{};
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    graphicsQueue.submit(1, &submitInfo, nullptr);
+    graphicsQueue.waitIdle();
+
+    device.freeCommandBuffers(commandPool, 1, &commandBuffer);
+}
+
 } // namespace MoldWing

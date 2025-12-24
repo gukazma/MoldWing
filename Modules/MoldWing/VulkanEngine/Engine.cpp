@@ -18,7 +18,7 @@ Engine::Engine(GLFWwindow* window, const EngineConfig& config)
     createSurface(window);
 
     // Create device
-    device = std::make_unique<Device>(instance->getHandle(), surface);
+    device = std::make_unique<Device>(instance->getHandle(), surface, config.enableRayTracing);
 
     // Create swapchain
     swapchain = std::make_unique<Swapchain>(
@@ -50,6 +50,9 @@ Engine::Engine(GLFWwindow* window, const EngineConfig& config)
         device->getQueueFamilyIndices().graphicsFamily.value(),
         config.maxFramesInFlight
     );
+
+    // Set graphics queue for single time commands
+    cmdBufferManager->setGraphicsQueue(device->getGraphicsQueue());
 }
 
 Engine::~Engine() {

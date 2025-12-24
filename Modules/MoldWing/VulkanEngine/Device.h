@@ -18,6 +18,7 @@ struct QueueFamilyIndices {
 class VulkanEngine_API Device {
 public:
     Device(vk::Instance instance, vk::SurfaceKHR surface);
+    Device(vk::Instance instance, vk::SurfaceKHR surface, bool enableRayTracing);
     ~Device();
 
     vk::PhysicalDevice getPhysicalDevice() const { return physicalDevice; }
@@ -26,18 +27,26 @@ public:
     vk::Queue getPresentQueue() const { return presentQueue; }
     QueueFamilyIndices getQueueFamilyIndices() const { return queueFamilyIndices; }
 
+    bool isRayTracingSupported() const { return rayTracingSupported; }
+    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR getRayTracingProperties() const;
+
     operator vk::Device() const { return device; }
 
 private:
     void pickPhysicalDevice(vk::Instance instance, vk::SurfaceKHR surface);
     void createLogicalDevice();
     QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface);
+    bool checkRayTracingSupport(vk::PhysicalDevice device);
 
     vk::PhysicalDevice physicalDevice;
     vk::Device device;
     vk::Queue graphicsQueue;
     vk::Queue presentQueue;
     QueueFamilyIndices queueFamilyIndices;
+
+    bool rayTracingEnabled;
+    bool rayTracingSupported;
+    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingProperties;
 };
 
 } // namespace MoldWing

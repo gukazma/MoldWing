@@ -22,12 +22,14 @@ file(MAKE_DIRECTORY ${SHADER_HEADER_DIR})
 file(GLOB SHADER_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vert"
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.frag"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.comp"
 )
 
 # Function to compile shader to SPIR-V and generate C++ header
 set(SHADER_HEADERS "")
 foreach(SHADER_FILE ${SHADER_FILES})
     get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
+    get_filename_component(SHADER_EXT ${SHADER_FILE} EXT)
 
     # Create variable name from shader name
     string(REPLACE "." "_" VAR_NAME ${SHADER_NAME})
@@ -42,6 +44,11 @@ foreach(SHADER_FILE ${SHADER_FILES})
     set(GLSLC_OPTS "")
     if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
         set(GLSLC_OPTS "-O")
+    endif()
+
+    # Add Vulkan 1.2 target environment for compute shaders with ray query extension
+    if(SHADER_EXT STREQUAL ".comp")
+        list(APPEND GLSLC_OPTS "--target-env=vulkan1.2")
     endif()
 
     # Compile shader to SPIR-V

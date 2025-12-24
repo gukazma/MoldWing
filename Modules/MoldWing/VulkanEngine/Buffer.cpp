@@ -8,7 +8,7 @@ namespace MoldWing {
 Buffer::Buffer(Device* device, vk::DeviceSize size,
                vk::BufferUsageFlags usage,
                vk::MemoryPropertyFlags properties)
-    : device(device), size(size) {
+    : device(device), size(size), usage(usage) {
 
     // Create buffer
     vk::BufferCreateInfo bufferInfo{};
@@ -24,6 +24,13 @@ Buffer::Buffer(Device* device, vk::DeviceSize size,
     vk::MemoryAllocateInfo allocInfo{};
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    // If buffer usage includes shader device address, enable it in memory allocation
+    vk::MemoryAllocateFlagsInfo allocFlagsInfo{};
+    if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress) {
+        allocFlagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+        allocInfo.pNext = &allocFlagsInfo;
+    }
 
     memory = device->getHandle().allocateMemory(allocInfo);
 
@@ -57,6 +64,16 @@ void Buffer::copyData(const void* data, vk::DeviceSize dataSize) {
 
     void* mappedData = map();
     std::memcpy(mappedData, data, static_cast<size_t>(dataSize));
+    unmap();
+}
+
+void Buffer::copyToHost(void* data, vk::DeviceSize dataSize) {
+    if (dataSize > size) {
+        throw std::runtime_error("Data size exceeds buffer size");
+    }
+
+    void* mappedData = map();
+    std::memcpy(data, mappedData, static_cast<size_t>(dataSize));
     unmap();
 }
 

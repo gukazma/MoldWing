@@ -30,6 +30,9 @@ public:
     // Copy data to buffer
     void copyData(const void* data, vk::DeviceSize dataSize);
 
+    // Copy data from buffer to host
+    void copyToHost(void* data, vk::DeviceSize dataSize);
+
     // Helper to create and fill buffer in one call
     template<typename T>
     static Buffer* createWithData(Device* device, const std::vector<T>& data,
@@ -43,6 +46,7 @@ private:
     vk::Buffer buffer;
     vk::DeviceMemory memory;
     vk::DeviceSize size;
+    vk::BufferUsageFlags usage;
 
     uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 };
