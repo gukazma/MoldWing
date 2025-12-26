@@ -16,6 +16,11 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
 find_package(assimp CONFIG REQUIRED)
 
 # =============================================================================
+# Find spdlog
+# =============================================================================
+find_package(spdlog CONFIG REQUIRED)
+
+# =============================================================================
 # Source files
 # =============================================================================
 set(MAIN_SOURCES
@@ -41,11 +46,13 @@ set(RENDER_HEADERS
 
 set(CORE_SOURCES
     src/Core/MeshData.cpp
+    src/Core/Logger.cpp
 )
 
 set(CORE_HEADERS
     src/Core/MeshData.hpp
     src/Core/TextureData.hpp
+    src/Core/Logger.hpp
 )
 
 set(IO_SOURCES
@@ -129,6 +136,9 @@ target_link_libraries(MoldWing PRIVATE
 
     # Model loading
     assimp::assimp
+
+    # Logging
+    spdlog::spdlog
 )
 
 # =============================================================================
@@ -143,6 +153,8 @@ target_compile_definitions(MoldWing PRIVATE
     D3D12_SUPPORTED
     ENGINE_DLL
     PLATFORM_WIN32
+    # spdlog: 启用 TRACE 级别日志
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
 )
 
 # =============================================================================
@@ -217,6 +229,15 @@ if(WIN32)
             "${VCPKG_BIN_DIR}/pugixml.dll"
             "$<TARGET_FILE_DIR:MoldWing>"
         COMMENT "Copying assimp DLLs..."
+    )
+
+    # Copy spdlog and fmt DLLs
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_BIN_DIR}/spdlog$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/fmt$<$<CONFIG:Debug>:d>.dll"
+            "$<TARGET_FILE_DIR:MoldWing>"
+        COMMENT "Copying spdlog DLLs..."
     )
 
     # Create platforms directory and copy qwindows plugin

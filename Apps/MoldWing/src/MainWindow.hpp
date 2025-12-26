@@ -1,16 +1,21 @@
 /*
  *  MoldWing - Main Window
- *  S1.7/S1.8: With QUndoStack and menu system
+ *  S1.7/S1.8: With QUndoStack, menu system, and DockWidgets
  */
 
 #pragma once
 
 #include <QMainWindow>
 #include <QUndoStack>
+#include <QSettings>
 
 class QMenu;
 class QAction;
 class QToolBar;
+class QDockWidget;
+class QUndoView;
+class QListWidget;
+class QLabel;
 
 namespace MoldWing
 {
@@ -24,7 +29,7 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
-    ~MainWindow() override = default;
+    ~MainWindow() override;
 
     // Get undo stack for command execution
     QUndoStack* undoStack() { return m_undoStack; }
@@ -38,12 +43,26 @@ private:
     void setupMenus();
     void setupToolBar();
     void setupStatusBar();
+    void setupDockWidgets();
+
+    void saveWindowState();
+    void restoreWindowState();
 
     // Central widget
     DiligentWidget* m_viewport3D = nullptr;
 
     // Undo system
     QUndoStack* m_undoStack = nullptr;
+    QUndoView* m_undoView = nullptr;
+
+    // Dock widgets
+    QDockWidget* m_toolDock = nullptr;
+    QDockWidget* m_propertyDock = nullptr;
+    QDockWidget* m_historyDock = nullptr;
+
+    // Dock widget content
+    QListWidget* m_toolList = nullptr;
+    QLabel* m_propertyLabel = nullptr;
 
     // Menus
     QMenu* m_fileMenu = nullptr;

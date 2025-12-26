@@ -83,7 +83,7 @@ MoldWing/
 
 | 里程碑 | 功能 | 状态 |
 |-------|------|------|
-| M1 | 基础框架（Qt+DiligentEngine集成） | 🔄 75% |
+| M1 | 基础框架（Qt+DiligentEngine集成） | ✅ 100% |
 | M2 | 框选 | ⏳ 待开始 |
 | M3 | 刷选 | ⏳ 待开始 |
 | M4 | 套索选择 | ⏳ 待开始 |
@@ -103,9 +103,9 @@ MoldWing/
 - ✅ 网格渲染（MeshRenderer + PSO）
 - ✅ 相机系统（OrbitCamera）
 - ✅ 主窗口基础布局（菜单/工具栏/状态栏）
-- 🔄 撤销系统（QUndoStack 已集成，QUndoView 待完成）
-- ⏳ DockWidget 布局（待完成）
-- 🔄 **日志系统（spdlog + 崩溃捕获）- 开发中**
+- ✅ 撤销系统（QUndoStack + QUndoView）
+- ✅ DockWidget 布局（工具/属性/历史面板 + 布局保存）
+- ✅ 日志系统（spdlog + Windows MiniDump 崩溃捕获）
 
 ## 构建命令
 
@@ -183,5 +183,5 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 
 ---
 
-**最后更新**: 2025-12-26
-**项目版本**: 0.1-dev (Qt 方案)
+**最后更新**: 2025-12-27
+**项目版本**: 0.1-dev (Qt 方案) - M1 完成

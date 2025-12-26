@@ -1,11 +1,12 @@
 /*
  *  MoldWing - Main Window Implementation
- *  S1.7/S1.8: With QUndoStack, menus, and file handling
+ *  S1.7/S1.8: With QUndoStack, menus, DockWidgets, and layout persistence
  */
 
 #include "MainWindow.hpp"
 #include "Render/DiligentWidget.hpp"
 #include "Core/MeshData.hpp"
+#include "Core/Logger.hpp"
 #include "IO/MeshLoader.hpp"
 
 #include <QMenuBar>
@@ -14,6 +15,12 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QKeySequence>
+#include <QDockWidget>
+#include <QUndoView>
+#include <QListWidget>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QApplication>
 
 namespace MoldWing
 {
@@ -21,6 +28,8 @@ namespace MoldWing
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    LOG_INFO("MainWindow 构造开始");
+
     setWindowTitle(tr("MoldWing - Oblique Photography 3D Model Editor"));
     setMinimumSize(1280, 720);
 
@@ -35,6 +44,19 @@ MainWindow::MainWindow(QWidget* parent)
     setupMenus();
     setupToolBar();
     setupStatusBar();
+    setupDockWidgets();
+
+    // Restore window state
+    restoreWindowState();
+
+    LOG_INFO("MainWindow 构造完成");
+}
+
+MainWindow::~MainWindow()
+{
+    LOG_INFO("MainWindow 析构开始");
+    saveWindowState();
+    LOG_INFO("MainWindow 析构完成");
 }
 
 void MainWindow::setupMenus()
@@ -93,6 +115,106 @@ void MainWindow::setupStatusBar()
     statusBar()->showMessage(tr("Ready"));
 }
 
+void MainWindow::setupDockWidgets()
+{
+    LOG_DEBUG("设置 DockWidgets");
+
+    // =========================================================================
+    // Left side: Tool Dock
+    // =========================================================================
+    m_toolDock = new QDockWidget(tr("Tools"), this);
+    m_toolDock->setObjectName("ToolDock");
+    m_toolDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+
+    m_toolList = new QListWidget(m_toolDock);
+    m_toolList->addItem(tr("🔲 Box Select"));
+    m_toolList->addItem(tr("🖌️ Brush Select"));
+    m_toolList->addItem(tr("⭕ Lasso Select"));
+    m_toolList->addItem(tr("🔗 Connected Select"));
+    m_toolList->addItem(tr("🎨 Paint Brush"));
+    m_toolList->addItem(tr("🧹 Eraser"));
+    m_toolList->addItem(tr("📍 Clone Stamp"));
+    m_toolList->addItem(tr("🩹 Healing Brush"));
+    m_toolList->setMinimumWidth(150);
+    m_toolDock->setWidget(m_toolList);
+
+    addDockWidget(Qt::LeftDockWidgetArea, m_toolDock);
+
+    // =========================================================================
+    // Right side: Property Dock
+    // =========================================================================
+    m_propertyDock = new QDockWidget(tr("Properties"), this);
+    m_propertyDock->setObjectName("PropertyDock");
+    m_propertyDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+
+    QWidget* propertyWidget = new QWidget(m_propertyDock);
+    QVBoxLayout* propertyLayout = new QVBoxLayout(propertyWidget);
+
+    m_propertyLabel = new QLabel(tr("No selection"), propertyWidget);
+    m_propertyLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    m_propertyLabel->setWordWrap(true);
+    propertyLayout->addWidget(m_propertyLabel);
+    propertyLayout->addStretch();
+
+    propertyWidget->setMinimumWidth(200);
+    m_propertyDock->setWidget(propertyWidget);
+
+    addDockWidget(Qt::RightDockWidgetArea, m_propertyDock);
+
+    // =========================================================================
+    // Right side: History Dock (tabified with Property)
+    // =========================================================================
+    m_historyDock = new QDockWidget(tr("History"), this);
+    m_historyDock->setObjectName("HistoryDock");
+    m_historyDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+
+    m_undoView = new QUndoView(m_undoStack, m_historyDock);
+    m_undoView->setEmptyLabel(tr("<empty>"));
+    m_historyDock->setWidget(m_undoView);
+
+    addDockWidget(Qt::RightDockWidgetArea, m_historyDock);
+
+    // Tabify history dock with property dock
+    tabifyDockWidget(m_propertyDock, m_historyDock);
+
+    // Make property dock the visible tab by default
+    m_propertyDock->raise();
+
+    // =========================================================================
+    // Add dock toggle actions to View menu
+    // =========================================================================
+    m_viewMenu->addSeparator();
+    m_viewMenu->addAction(m_toolDock->toggleViewAction());
+    m_viewMenu->addAction(m_propertyDock->toggleViewAction());
+    m_viewMenu->addAction(m_historyDock->toggleViewAction());
+
+    LOG_DEBUG("DockWidgets 设置完成");
+}
+
+void MainWindow::saveWindowState()
+{
+    LOG_DEBUG("保存窗口状态");
+
+    QSettings settings(QApplication::organizationName(), QApplication::applicationName());
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("windowState", saveState());
+}
+
+void MainWindow::restoreWindowState()
+{
+    LOG_DEBUG("恢复窗口状态");
+
+    QSettings settings(QApplication::organizationName(), QApplication::applicationName());
+
+    if (settings.contains("geometry")) {
+        restoreGeometry(settings.value("geometry").toByteArray());
+    }
+
+    if (settings.contains("windowState")) {
+        restoreState(settings.value("windowState").toByteArray());
+    }
+}
+
 void MainWindow::onOpenFile()
 {
     QString filePath = QFileDialog::getOpenFileName(
@@ -105,6 +227,7 @@ void MainWindow::onOpenFile()
     if (filePath.isEmpty())
         return;
 
+    LOG_INFO("打开文件: {}", filePath.toStdString());
     statusBar()->showMessage(tr("Loading %1...").arg(filePath));
 
     MeshLoader loader;
@@ -112,15 +235,20 @@ void MainWindow::onOpenFile()
 
     if (!m_currentMesh)
     {
+        MW_LOG_ERROR("加载模型失败: {}", loader.lastError().toStdString());
         QMessageBox::critical(this, tr("Error"),
             tr("Failed to load model:\n%1").arg(loader.lastError()));
         statusBar()->showMessage(tr("Failed to load model"));
         return;
     }
 
+    LOG_INFO("模型加载成功: {} 顶点, {} 面",
+             m_currentMesh->vertexCount(), m_currentMesh->faceCount());
+
     // Load mesh into renderer
     if (!m_viewport3D->loadMesh(*m_currentMesh))
     {
+        MW_LOG_ERROR("加载网格到渲染器失败");
         QMessageBox::critical(this, tr("Error"),
             tr("Failed to load mesh into renderer"));
         statusBar()->showMessage(tr("Failed to load mesh"));
@@ -130,6 +258,12 @@ void MainWindow::onOpenFile()
     // Update window title
     QFileInfo fileInfo(filePath);
     setWindowTitle(tr("MoldWing - %1").arg(fileInfo.fileName()));
+
+    // Update property panel
+    m_propertyLabel->setText(tr("Model: %1\nVertices: %2\nFaces: %3")
+        .arg(fileInfo.fileName())
+        .arg(m_currentMesh->vertexCount())
+        .arg(m_currentMesh->faceCount()));
 
     // Enable save action
     m_saveAction->setEnabled(true);
@@ -157,6 +291,8 @@ void MainWindow::onSaveFile()
     if (filePath.isEmpty())
         return;
 
+    LOG_INFO("保存文件: {}", filePath.toStdString());
+
     // TODO: Implement mesh saving
     QMessageBox::information(this, tr("Info"),
         tr("Save functionality will be implemented in a future update."));
@@ -164,6 +300,8 @@ void MainWindow::onSaveFile()
 
 void MainWindow::onResetView()
 {
+    LOG_DEBUG("重置视图");
+
     if (m_currentMesh && m_viewport3D)
     {
         const auto& b = m_currentMesh->bounds;
