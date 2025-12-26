@@ -2,7 +2,16 @@
   "name": "moldwing",
   "version-string": "latest",
   "dependencies": [
-    "gtest"
+    "gtest",
+    "assimp",
+    "cgal",
+    "eigen3",
+    "stb",
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": ["widgets", "gui", "opengl"]
+    }
   ],
   "builtin-baseline": "80d54ff62d528339c626a6fbc3489a7f25956ade"
 }
