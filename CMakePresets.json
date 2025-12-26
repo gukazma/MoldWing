@@ -7,9 +7,21 @@
     },
     "configurePresets": [
         {
+            "name": "vcpkg-base",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": {
+                    "type": "FILEPATH",
+                    "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+                },
+                "VCPKG_TARGET_TRIPLET": "x64-windows"
+            }
+        },
+        {
             "name": "vs2022-x64",
             "displayName": "Visual Studio Community 2022 Release - amd64",
             "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
+            "inherits": "vcpkg-base",
             "generator": "Visual Studio 17 2022",
             "toolset": "host=x64",
             "architecture": "x64",
@@ -22,6 +34,7 @@
             "name": "ninja-multi",
             "displayName": "Ninja Multi-Config",
             "description": "Configure and generate Ninja project files for all configurations",
+            "inherits": "vcpkg-base",
             "binaryDir": "${sourceDir}/Builds/${presetName}",
             "generator": "Ninja Multi-Config",
             "cacheVariables": {
