@@ -77,9 +77,9 @@ set(ALL_HEADERS
 )
 
 # =============================================================================
-# Create executable
+# Create executable (remove WIN32 for debug console output)
 # =============================================================================
-add_executable(MoldWing WIN32
+add_executable(MoldWing
     ${ALL_SOURCES}
     ${ALL_HEADERS}
 )

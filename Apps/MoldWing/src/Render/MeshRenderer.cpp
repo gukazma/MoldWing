@@ -9,6 +9,7 @@
 #include <Graphics/GraphicsTools/interface/MapHelper.hpp>
 #include <Graphics/GraphicsTools/interface/GraphicsUtilities.h>
 #include <cstring>
+#include <QDebug>
 
 using namespace Diligent;
 
@@ -21,8 +22,8 @@ namespace
     const char* VSSource = R"(
 cbuffer Constants
 {
-    float4x4 g_WorldViewProj;
-    float4x4 g_World;
+    row_major float4x4 g_WorldViewProj;
+    row_major float4x4 g_World;
     float4   g_LightDir;
     float4   g_CameraPos;
 };
@@ -55,8 +56,8 @@ void main(in VSInput VSIn, out PSInput PSIn)
     const char* PSSource = R"(
 cbuffer Constants
 {
-    float4x4 g_WorldViewProj;
-    float4x4 g_World;
+    row_major float4x4 g_WorldViewProj;
+    row_major float4x4 g_World;
     float4   g_LightDir;
     float4   g_CameraPos;
 };
@@ -181,10 +182,10 @@ bool MeshRenderer::createPipeline(IRenderDevice* pDevice, ISwapChain* pSwapChain
     psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_BACK;
     psoCI.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise = false;
 
-    // Depth stencil state (reversed-Z)
+    // Depth stencil state (standard depth)
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = true;
-    psoCI.GraphicsPipeline.DepthStencilDesc.DepthFunc = COMPARISON_FUNC_GREATER;
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthFunc = COMPARISON_FUNC_LESS;
 
     // Input layout
     LayoutElement layoutElems[] =
@@ -272,6 +273,12 @@ bool MeshRenderer::loadMesh(const MeshData& mesh)
     m_indexCount = static_cast<Uint32>(mesh.indices.size());
     m_bounds = mesh.bounds;
 
+    qDebug() << "MeshRenderer::loadMesh -"
+             << "Vertices:" << m_vertexCount
+             << "Indices:" << m_indexCount
+             << "Bounds: min(" << m_bounds.min[0] << m_bounds.min[1] << m_bounds.min[2] << ")"
+             << "max(" << m_bounds.max[0] << m_bounds.max[1] << m_bounds.max[2] << ")";
+
     return true;
 }
 
@@ -279,6 +286,9 @@ void MeshRenderer::render(IDeviceContext* pContext, const OrbitCamera& camera)
 {
     if (!m_initialized || !m_pVertexBuffer || !m_pIndexBuffer)
         return;
+
+    static int frameCount = 0;
+    bool shouldLog = (frameCount++ % 300 == 0);  // Log every ~5 seconds at 60fps
 
     // Update constant buffer
     {
@@ -310,6 +320,21 @@ void MeshRenderer::render(IDeviceContext* pContext, const OrbitCamera& camera)
         cb->CameraPos[1] = camY;
         cb->CameraPos[2] = camZ;
         cb->CameraPos[3] = 1.0f;
+
+        if (shouldLog)
+        {
+            qDebug() << "=== Render Debug ===";
+            qDebug() << "Camera pos:" << camX << camY << camZ;
+            qDebug() << "View matrix row0:" << view[0] << view[1] << view[2] << view[3];
+            qDebug() << "View matrix row1:" << view[4] << view[5] << view[6] << view[7];
+            qDebug() << "View matrix row2:" << view[8] << view[9] << view[10] << view[11];
+            qDebug() << "View matrix row3:" << view[12] << view[13] << view[14] << view[15];
+            qDebug() << "Proj matrix row0:" << proj[0] << proj[1] << proj[2] << proj[3];
+            qDebug() << "Proj matrix row1:" << proj[4] << proj[5] << proj[6] << proj[7];
+            qDebug() << "Proj matrix row2:" << proj[8] << proj[9] << proj[10] << proj[11];
+            qDebug() << "Proj matrix row3:" << proj[12] << proj[13] << proj[14] << proj[15];
+            qDebug() << "Drawing" << m_indexCount << "indices";
+        }
     }
 
     // Set pipeline state

@@ -32,7 +32,7 @@ public:
     // Getters
     float getDistance() const { return m_distance; }
 
-    // Get matrices (column-major for DirectX/DiligentEngine)
+    // Get matrices (row-major for HLSL row-vector * matrix)
     void getViewMatrix(float* outMatrix) const;
     void getProjectionMatrix(float* outMatrix) const;
 

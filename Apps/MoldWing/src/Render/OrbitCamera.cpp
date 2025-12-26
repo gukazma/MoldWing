@@ -131,15 +131,20 @@ void OrbitCamera::getViewMatrix(float* m) const
     upY = rightZ * lookX - rightX * lookZ;
     upZ = rightX * lookY - rightY * lookX;
 
-    // Build view matrix (column-major)
-    // Row 0: right
-    m[0] = rightX;  m[4] = rightY;  m[8]  = rightZ;  m[12] = -(rightX*posX + rightY*posY + rightZ*posZ);
-    // Row 1: up
-    m[1] = upX;     m[5] = upY;     m[9]  = upZ;     m[13] = -(upX*posX + upY*posY + upZ*posZ);
-    // Row 2: -look (forward into screen)
-    m[2] = -lookX;  m[6] = -lookY;  m[10] = -lookZ;  m[14] = (lookX*posX + lookY*posY + lookZ*posZ);
-    // Row 3
-    m[3] = 0.0f;    m[7] = 0.0f;    m[11] = 0.0f;    m[15] = 1.0f;
+    // Build view matrix (row-major for HLSL row-vector * matrix multiplication)
+    // DirectX left-handed: +X right, +Y up, +Z forward (into screen)
+    // For v * M, translation goes in the LAST ROW, not last column
+    // Row 0: right vector
+    m[0] = rightX;  m[1] = rightY;  m[2] = rightZ;   m[3] = 0.0f;
+    // Row 1: up vector
+    m[4] = upX;     m[5] = upY;     m[6] = upZ;      m[7] = 0.0f;
+    // Row 2: look (forward direction in DirectX LH)
+    m[8] = lookX;   m[9] = lookY;   m[10] = lookZ;   m[11] = 0.0f;
+    // Row 3: translation (negative camera position in rotated coordinates)
+    m[12] = -(rightX*posX + rightY*posY + rightZ*posZ);
+    m[13] = -(upX*posX + upY*posY + upZ*posZ);
+    m[14] = -(lookX*posX + lookY*posY + lookZ*posZ);
+    m[15] = 1.0f;
 }
 
 void OrbitCamera::getProjectionMatrix(float* m) const
@@ -149,13 +154,17 @@ void OrbitCamera::getProjectionMatrix(float* m) const
 
     float yScale = 1.0f / tanHalfFov;
     float xScale = yScale / m_aspectRatio;
-    float zRange = m_farPlane - m_nearPlane;
+    float zNear = m_nearPlane;
+    float zFar = m_farPlane;
 
-    // Perspective projection (column-major, reversed-Z for better depth precision)
-    m[0] = xScale;  m[4] = 0.0f;    m[8]  = 0.0f;                               m[12] = 0.0f;
-    m[1] = 0.0f;    m[5] = yScale;  m[9]  = 0.0f;                               m[13] = 0.0f;
-    m[2] = 0.0f;    m[6] = 0.0f;    m[10] = m_nearPlane / zRange;               m[14] = m_farPlane * m_nearPlane / zRange;
-    m[3] = 0.0f;    m[7] = 0.0f;    m[11] = -1.0f;                              m[15] = 0.0f;
+    // Standard DirectX perspective projection (row-major, depth 0 to 1)
+    // Near plane maps to 0, far plane maps to 1
+    std::memset(m, 0, 16 * sizeof(float));
+    m[0] = xScale;
+    m[5] = yScale;
+    m[10] = zFar / (zFar - zNear);
+    m[11] = 1.0f;
+    m[14] = -zNear * zFar / (zFar - zNear);
 }
 
 } // namespace MoldWing

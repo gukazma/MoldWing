@@ -94,7 +94,7 @@ void DiligentWidget::initializeDiligent()
     swapChainDesc.DepthBufferFormat = TEX_FORMAT_D32_FLOAT;
     swapChainDesc.Usage = SWAP_CHAIN_USAGE_RENDER_TARGET;
     swapChainDesc.BufferCount = 2;
-    swapChainDesc.DefaultDepthValue = 0.0f;  // Reversed-Z: 0 is far
+    swapChainDesc.DefaultDepthValue = 1.0f;  // Standard depth: 1 is far
 
     Win32NativeWindow window{hwnd};
 
@@ -136,7 +136,16 @@ bool DiligentWidget::loadMesh(const MeshData& mesh)
 
     // Fit camera to mesh bounds
     const auto& b = mesh.bounds;
+    qDebug() << "DiligentWidget::loadMesh - Fitting camera to bounds:"
+             << "min(" << b.min[0] << b.min[1] << b.min[2] << ")"
+             << "max(" << b.max[0] << b.max[1] << b.max[2] << ")";
+
     m_camera.fitToModel(b.min[0], b.min[1], b.min[2], b.max[0], b.max[1], b.max[2]);
+
+    float camX, camY, camZ;
+    m_camera.getPosition(camX, camY, camZ);
+    qDebug() << "Camera distance:" << m_camera.getDistance()
+             << "position:" << camX << camY << camZ;
 
     return true;
 }
@@ -153,7 +162,7 @@ void DiligentWidget::render()
     const float clearColor[] = {0.15f, 0.15f, 0.18f, 1.0f};
     m_pContext->SetRenderTargets(1, &pRTV, pDSV, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     m_pContext->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    m_pContext->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 0.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);  // Reversed-Z: clear to 0
+    m_pContext->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);  // Standard depth: clear to 1
 
     // Render mesh if loaded
     if (m_meshRenderer.hasMesh())
