@@ -34,6 +34,9 @@ DiligentWidget::DiligentWidget(QWidget* parent)
     // Set minimum size
     setMinimumSize(640, 480);
 
+    // Set size policy to expand and fill available space
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
     // Create render timer for continuous updates (~60 FPS)
     m_renderTimer = new QTimer(this);
     connect(m_renderTimer, &QTimer::timeout, this, QOverload<>::of(&DiligentWidget::update));
@@ -86,10 +89,11 @@ void DiligentWidget::initializeDiligent()
         return;
     }
 
-    // Create swap chain
+    // Create swap chain (use device pixel ratio for high-DPI)
+    qreal dpr = devicePixelRatio();
     SwapChainDesc swapChainDesc;
-    swapChainDesc.Width = static_cast<Uint32>(width());
-    swapChainDesc.Height = static_cast<Uint32>(height());
+    swapChainDesc.Width = static_cast<Uint32>(width() * dpr);
+    swapChainDesc.Height = static_cast<Uint32>(height() * dpr);
     swapChainDesc.ColorBufferFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
     swapChainDesc.DepthBufferFormat = TEX_FORMAT_D32_FLOAT;
     swapChainDesc.Usage = SWAP_CHAIN_USAGE_RENDER_TARGET;
@@ -120,7 +124,7 @@ void DiligentWidget::initializeDiligent()
     m_initialized = true;
     emit initialized();
 
-    qDebug() << "DiligentEngine D3D11 initialized successfully";
+
 #else
     qCritical() << "Non-Windows platforms not yet supported";
 #endif
@@ -136,16 +140,7 @@ bool DiligentWidget::loadMesh(const MeshData& mesh)
 
     // Fit camera to mesh bounds
     const auto& b = mesh.bounds;
-    qDebug() << "DiligentWidget::loadMesh - Fitting camera to bounds:"
-             << "min(" << b.min[0] << b.min[1] << b.min[2] << ")"
-             << "max(" << b.max[0] << b.max[1] << b.max[2] << ")";
-
     m_camera.fitToModel(b.min[0], b.min[1], b.min[2], b.max[0], b.max[1], b.max[2]);
-
-    float camX, camY, camZ;
-    m_camera.getPosition(camX, camY, camZ);
-    qDebug() << "Camera distance:" << m_camera.getDistance()
-             << "position:" << camX << camY << camZ;
 
     return true;
 }
@@ -158,9 +153,22 @@ void DiligentWidget::render()
     auto* pRTV = m_pSwapChain->GetCurrentBackBufferRTV();
     auto* pDSV = m_pSwapChain->GetDepthBufferDSV();
 
+    // Set render targets
+    m_pContext->SetRenderTargets(1, &pRTV, pDSV, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    // Set viewport to cover the entire swap chain
+    const auto& swapChainDesc = m_pSwapChain->GetDesc();
+    Viewport vp;
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    vp.Width = static_cast<float>(swapChainDesc.Width);
+    vp.Height = static_cast<float>(swapChainDesc.Height);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_pContext->SetViewports(1, &vp, swapChainDesc.Width, swapChainDesc.Height);
+
     // Clear render target with dark gray color
     const float clearColor[] = {0.15f, 0.15f, 0.18f, 1.0f};
-    m_pContext->SetRenderTargets(1, &pRTV, pDSV, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     m_pContext->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     m_pContext->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);  // Standard depth: clear to 1
 
@@ -190,8 +198,10 @@ void DiligentWidget::resizeEvent(QResizeEvent* event)
 
     if (m_initialized && m_pSwapChain)
     {
-        Uint32 newWidth = static_cast<Uint32>(event->size().width());
-        Uint32 newHeight = static_cast<Uint32>(event->size().height());
+        // Use device pixel ratio for high-DPI displays
+        qreal dpr = devicePixelRatio();
+        Uint32 newWidth = static_cast<Uint32>(event->size().width() * dpr);
+        Uint32 newHeight = static_cast<Uint32>(event->size().height() * dpr);
 
         if (newWidth > 0 && newHeight > 0)
         {

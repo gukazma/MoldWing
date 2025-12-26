@@ -119,10 +119,6 @@ std::shared_ptr<MeshData> MeshLoader::loadOBJ(const QString& filePath)
     // Build face adjacency for selection operations
     meshData->buildAdjacency();
 
-    qDebug() << "Loaded mesh:" << filePath
-             << "| Vertices:" << meshData->vertexCount()
-             << "| Faces:" << meshData->faceCount();
-
     return meshData;
 }
 

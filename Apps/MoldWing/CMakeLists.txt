@@ -175,39 +175,76 @@ if(WIN32)
 endif()
 
 # =============================================================================
-# Deploy Qt (copy DLLs and plugins)
+# Deploy Qt and dependencies (copy DLLs and plugins)
 # =============================================================================
 if(WIN32)
-    # vcpkg Qt paths
+    # vcpkg paths
     set(VCPKG_INSTALLED_DIR "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows")
+    set(VCPKG_BIN_DIR "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>bin")
+    set(VCPKG_PLUGINS_DIR "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>Qt6/plugins")
 
-    # Copy Qt DLLs (debug goes to debug/bin, release goes to bin)
+    # Copy Qt core DLLs
     add_custom_command(TARGET MoldWing POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>bin/Qt6Core$<$<CONFIG:Debug>:d>.dll"
-            "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>bin/Qt6Gui$<$<CONFIG:Debug>:d>.dll"
-            "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>bin/Qt6Widgets$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/Qt6Core$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/Qt6Gui$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/Qt6Widgets$<$<CONFIG:Debug>:d>.dll"
             "$<TARGET_FILE_DIR:MoldWing>"
         COMMENT "Copying Qt DLLs..."
+    )
+
+    # Copy Qt dependency DLLs
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_BIN_DIR}/freetype$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/pcre2-16$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/zlib$<$<CONFIG:Debug>:d>1.dll"
+            "${VCPKG_BIN_DIR}/bz2$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/libpng16$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/brotlicommon.dll"
+            "${VCPKG_BIN_DIR}/brotlidec.dll"
+            "${VCPKG_BIN_DIR}/double-conversion.dll"
+            "$<TARGET_FILE_DIR:MoldWing>"
+        COMMENT "Copying Qt dependency DLLs..."
+    )
+
+    # Copy assimp and its dependencies
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_BIN_DIR}/assimp-vc143-mt$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/minizip.dll"
+            "${VCPKG_BIN_DIR}/poly2tri.dll"
+            "${VCPKG_BIN_DIR}/pugixml.dll"
+            "$<TARGET_FILE_DIR:MoldWing>"
+        COMMENT "Copying assimp DLLs..."
     )
 
     # Create platforms directory and copy qwindows plugin
     add_custom_command(TARGET MoldWing POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:MoldWing>/platforms"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>Qt6/plugins/platforms/qwindows$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_PLUGINS_DIR}/platforms/qwindows$<$<CONFIG:Debug>:d>.dll"
             "$<TARGET_FILE_DIR:MoldWing>/platforms/"
         COMMENT "Copying Qt platform plugin..."
     )
 
-    # Create styles directory and copy style plugin (optional, may not exist)
+    # Create styles directory and copy style plugin
     add_custom_command(TARGET MoldWing POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:MoldWing>/styles"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>Qt6/plugins/styles/qmodernwindowsstyle$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_PLUGINS_DIR}/styles/qmodernwindowsstyle$<$<CONFIG:Debug>:d>.dll"
             "$<TARGET_FILE_DIR:MoldWing>/styles/"
         COMMENT "Copying Qt style plugin..."
-        COMMAND_EXPAND_LISTS
+    )
+
+    # Create imageformats directory and copy plugins
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:MoldWing>/imageformats"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_PLUGINS_DIR}/imageformats/qgif$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_PLUGINS_DIR}/imageformats/qico$<$<CONFIG:Debug>:d>.dll"
+            "$<TARGET_FILE_DIR:MoldWing>/imageformats/"
+        COMMENT "Copying Qt imageformats plugins..."
     )
 endif()
 
