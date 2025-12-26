@@ -1,3 +1,0 @@
-add_subdirectory(VulkanEngine)
-add_subdirectory(Mesh)
-add_subdirectory(Shaders)

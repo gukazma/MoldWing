@@ -23,7 +23,7 @@ MoldWing/
 │   └── compile-shaders.cmake        # Shader 编译模块
 ├── Modules/                          # 库模块
 │   └── MoldWing/                    # MoldWing 命名空间
-│       └── VulkanEngine/            # Vulkan 引擎动态库
+│       └── Renderer/            # Vulkan 引擎动态库
 ├── Apps/                             # 应用程序
 │   ├── DemoApp/                     # 简单控制台应用
 │   ├── QtDemoApp/                   # Qt 图形应用（可选）
@@ -52,14 +52,14 @@ MoldWing/
 }
 ```
 
-## VulkanEngine 动态库
+## Renderer 动态库
 
 ### 模块位置
-`Modules/MoldWing/VulkanEngine/`
+`Modules/MoldWing/Renderer/`
 
 ### 架构设计
 
-VulkanEngine 是一个完全使用 **vulkan-hpp**（C++ 风格的 Vulkan API）封装的模块化图形引擎库。
+Renderer 是一个完全使用 **vulkan-hpp**（C++ 风格的 Vulkan API）封装的模块化图形引擎库。
 
 #### 组件列表
 
@@ -170,9 +170,9 @@ delete engine;
 
 ### 编译输出
 
-- **Debug**: `VulkanEngined.dll` + `VulkanEngined.lib`
-- **Release**: `VulkanEngine.dll` + `VulkanEngine.lib`
-- **命名空间**: `MoldWing::VulkanEngine`
+- **Debug**: `Rendererd.dll` + `Rendererd.lib`
+- **Release**: `Renderer.dll` + `Renderer.lib`
+- **命名空间**: `MoldWing::Renderer`
 
 ### CMake 集成
 
@@ -183,7 +183,7 @@ find_package(glfw3 CONFIG REQUIRED)
 
 target_link_libraries(YourApp
     PRIVATE
-        MoldWing::VulkanEngine
+        MoldWing::Renderer
         Vulkan::Vulkan
         glfw
 )
@@ -195,14 +195,14 @@ target_link_libraries(YourApp
 `Apps/VulkanDemo/`
 
 ### 功能
-- 使用 VulkanEngine 库的最小化演示
+- 使用 Renderer 库的最小化演示
 - 集成 ImGui UI 框架
 - 显示交互式演示窗口
 - 实时 FPS 显示
 
 ### 代码统计
 - **重构前**: 574 行（直接使用 Vulkan C API）
-- **重构后**: 205 行（使用 VulkanEngine 库）
+- **重构后**: 205 行（使用 Renderer 库）
 - **减少**: 64% 代码量
 
 ### 关键特性
@@ -214,7 +214,7 @@ class VulkanDemo {
     VkDescriptorPool imguiDescriptorPool;
 
     void initWindow();           // GLFW 窗口初始化
-    void initVulkanEngine();     // 创建 MoldWing 引擎实例
+    void initRenderer();     // 创建 MoldWing 引擎实例
     void initImGui();            // ImGui 初始化
     void mainLoop();             // 主循环
     void drawFrame();            // 帧渲染
@@ -259,7 +259,7 @@ cmake --preset vs2022-x64
 cmake --build --preset vs2022-x64-debug
 
 # 编译特定目标
-cmake --build --preset vs2022-x64-debug --target VulkanEngine
+cmake --build --preset vs2022-x64-debug --target Renderer
 cmake --build --preset vs2022-x64-debug --target VulkanDemo
 ```
 
@@ -267,7 +267,7 @@ cmake --build --preset vs2022-x64-debug --target VulkanDemo
 
 - **编译输出**: `builds/vs2022-x64/`
 - **安装目录**: `install/vs2022-x64/bin/`
-- **库后缀**: Debug 版本带 `d` 后缀（如 `VulkanEngined.dll`）
+- **库后缀**: Debug 版本带 `d` 后缀（如 `Rendererd.dll`）
 
 ## 开发工具集成
 
@@ -371,7 +371,7 @@ VulkanDemo 包含两个示例 shader:
 - 删除 659 行不需要的代码
 
 **Commit 1c187f1** - Implement Vulkan Engine Module
-- 实现完整的 VulkanEngine 模块化库
+- 实现完整的 Renderer 模块化库
 - 使用 vulkan-hpp 封装
 - 创建 6 个核心组件类
 - 简化 VulkanDemo 使用

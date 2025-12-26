@@ -1,6 +1,2 @@
-add_subdirectory(01_HelloWorld)
-add_subdirectory(02_ImGuiBasic)
-add_subdirectory(03_RotatingCube)
-add_subdirectory(04_CameraControl)
-add_subdirectory(05_ModelDemo)
-add_subdirectory(06_RayPicking)
+# MoldWing Applications
+add_subdirectory(HelloTriangle)

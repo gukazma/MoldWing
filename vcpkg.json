@@ -1,21 +1,8 @@
 {
-  "name": "main",
+  "name": "moldwing",
   "version-string": "latest",
   "dependencies": [
-    "gtest",
-    "vulkan",
-    "vulkan-hpp",
-    "glfw3",
-    "glm",
-    {
-      "name": "imgui",
-      "features": ["glfw-binding", "vulkan-binding"]
-    },
-    "stb",
-    "tinyobjloader",
-    "cgal",
-    "entt",
-    "opencv4"
+    "gtest"
   ],
   "builtin-baseline": "80d54ff62d528339c626a6fbc3489a7f25956ade"
 }

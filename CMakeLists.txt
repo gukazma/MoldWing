@@ -1,83 +1,50 @@
-cmake_minimum_required(VERSION 3.16)
-if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux")
-	message("Current platform: Linux ")
-  set(VCPKG_TARGET_TRIPLET x64-linux-dynamic CACHE STRING "")
-elseif(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
-	message("Current platform: Windows ")
-  set(VCPKG_TARGET_TRIPLET x64-windows CACHE STRING "")
-else()
-	message("Current platform: unkonw ")
-endif()
-# 设置基础环境
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
+cmake_minimum_required(VERSION 3.20)
 
-# 设置默认的编译配置为 Release，conan.cmake 需要确定你当前正在使用哪种编译配置以决定如何下载和编译三方库
-if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
-    message(STATUS "No CMAKE_BUILD_TYPE selected, defaulting to ${CMAKE_BUILD_TYPE}")
-endif ()
+# Project name
+project(MoldWing VERSION 0.1 LANGUAGES CXX)
 
-get_filename_component(ROOT_NAME ${CMAKE_SOURCE_DIR} NAME)
-message("Configure project: ${ROOT_NAME}")
-project(${ROOT_NAME} VERSION 0.1 LANGUAGES CXX)
-
-option(ENABLE_DOCS "Enable doxygen docs" ON)
-option(PUBLISH_APP "PUBLISH APP" OFF)
-
-# just for qt
-# set(CMAKE_AUTOUIC ON)
-# set(CMAKE_AUTOMOC ON)
-# set(CMAKE_AUTORCC ON)
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
+# =============================================================================
+# Global Settings
+# =============================================================================
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_DEBUG_POSTFIX "d")
-set(CMAKE_RELEASE_POSTFIX "") 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_INSTALL_PREFIX}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_INSTALL_PREFIX}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_INSTALL_PREFIX}/bin)  
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# Output directories
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR}/bin)
 
+# =============================================================================
+# DiligentEngine Integration
+# =============================================================================
+# Configure DiligentEngine options before adding subdirectory
+set(DILIGENT_BUILD_SAMPLES ON CACHE BOOL "Build DiligentSamples module")
+set(DILIGENT_BUILD_TOOLS ON CACHE BOOL "Build DiligentTools module")
+set(DILIGENT_BUILD_FX ON CACHE BOOL "Build DiligentFX module")
 
-include(CMakeModules/doxygen.cmake)
-include(CMakeModules/dependency-graph.cmake)
-include(CMakeModules/formatting.cmake)
-include(CMakeModules/compile-shaders.cmake)
-# ---- Include guards ----
-if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
-  message(
-    FATAL_ERROR
-      "In-source builds not allowed. Please make a new directory (called a build directory) and run CMake from there."
-  )
-endif()
+# Add DiligentEngine
+add_subdirectory(ThirdParty/DiligentEngine)
 
-add_subdirectory(Modules)
+# =============================================================================
+# MoldWing Applications
+# =============================================================================
 add_subdirectory(Apps)
-enable_testing()
-add_subdirectory(Tests)
 
-if(ENABLE_DOCS)
-  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/../Docs)
-  build_docs(PROCESS_DOXYFILE TRUE DOXYFILE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Docs/Doxyfile.in)
-endif()
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT 01_HelloWorld)
-
-if(CLANG_FORMAT_EXE)
-  message(STATUS "Found clang format ............ Configuring ..............")
-  file(GLOB_RECURSE FFILES ${CMAKE_SOURCE_DIR}/Modules/*.[hc] ${CMAKE_SOURCE_DIR}/Modules/*.[hc]pp ${CMAKE_SOURCE_DIR}/Apps/*.[hc] ${CMAKE_SOURCE_DIR}/Apps/*.[hc]pp)
-  clang_format(${PROJECT_NAME}Format ${FFILES})
-  set_target_properties(${PROJECT_NAME}Format PROPERTIES FOLDER Tools)
+# =============================================================================
+# Tests (optional)
+# =============================================================================
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Tests/CMakeLists.txt")
+    enable_testing()
+    add_subdirectory(Tests)
 endif()
 
-if(DOT_EXE)
-  message(STATUS "Found Graphviz ............ Configuring ..............")
-  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/../Docs/DependencyGraph)
-  gen_dep_graph(
-    png 
-    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/../Docs/DependencyGraph
-    TARGET_NAME ${PROJECT_NAME}DependencyGraph
-  )
-  set_target_properties(${PROJECT_NAME}DependencyGraph PROPERTIES FOLDER Tools)
+# =============================================================================
+# Set startup project
+# =============================================================================
+if(TARGET HelloTriangle)
+    set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT HelloTriangle)
+elseif(TARGET Tutorial01_HelloTriangle)
+    set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Tutorial01_HelloTriangle)
 endif()
