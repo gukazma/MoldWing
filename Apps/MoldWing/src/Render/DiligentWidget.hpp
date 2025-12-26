@@ -1,7 +1,7 @@
 /*
  *  MoldWing - DiligentWidget
  *  Qt widget that hosts DiligentEngine rendering
- *  S1.2/S1.5/S1.6: Qt + DiligentEngine + Rendering + Camera
+ *  Enhanced with Blender-style camera controls
  */
 
 #pragma once
@@ -10,6 +10,9 @@
 #include <QTimer>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QKeyEvent>
+#include <QMenu>
+#include <QElapsedTimer>
 
 // DiligentEngine headers
 #include "Graphics/GraphicsEngine/interface/RenderDevice.h"
@@ -53,11 +56,29 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
     QPaintEngine* paintEngine() const override { return nullptr; }
+
+private slots:
+    void onContextMenuViewFront();
+    void onContextMenuViewBack();
+    void onContextMenuViewLeft();
+    void onContextMenuViewRight();
+    void onContextMenuViewTop();
+    void onContextMenuViewBottom();
+    void onContextMenuViewIsometric();
+    void onContextMenuResetView();
+    void onContextMenuToggleOrtho();
 
 private:
     void initializeDiligent();
     void render();
+    void setupContextMenu();
+
+    // Get current rotation constraint based on modifier keys
+    RotationConstraint getRotationConstraint() const;
 
     // DiligentEngine objects
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice>  m_pDevice;
@@ -66,6 +87,7 @@ private:
 
     // Render timer
     QTimer* m_renderTimer = nullptr;
+    QElapsedTimer m_frameTimer;
 
     // Rendering
     MeshRenderer m_meshRenderer;
@@ -75,6 +97,14 @@ private:
     QPoint m_lastMousePos;
     bool m_rotating = false;
     bool m_panning = false;
+
+    // Modifier keys state
+    bool m_shiftHeld = false;
+    bool m_ctrlHeld = false;
+    bool m_altHeld = false;
+
+    // Context menu
+    QMenu* m_contextMenu = nullptr;
 
     // State
     bool m_initialized = false;

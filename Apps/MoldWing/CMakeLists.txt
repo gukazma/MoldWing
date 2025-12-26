@@ -40,6 +40,7 @@ set(RENDER_SOURCES
 
 set(RENDER_HEADERS
     src/Render/DiligentWidget.hpp
+    src/Render/CameraSettings.hpp
     src/Render/OrbitCamera.hpp
     src/Render/MeshRenderer.hpp
 )

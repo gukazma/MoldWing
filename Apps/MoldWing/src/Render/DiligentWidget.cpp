@@ -1,11 +1,13 @@
 /*
  *  MoldWing - DiligentWidget Implementation
- *  S1.2/S1.5/S1.6: Qt + DiligentEngine + Rendering + Camera
+ *  Enhanced with Blender-style camera controls
  */
 
 #include "DiligentWidget.hpp"
+#include "Core/Logger.hpp"
 
 #include <QResizeEvent>
+#include <QContextMenuEvent>
 #include <QDebug>
 
 // DiligentEngine - use loader for shared DLL
@@ -41,10 +43,20 @@ DiligentWidget::DiligentWidget(QWidget* parent)
     m_renderTimer = new QTimer(this);
     connect(m_renderTimer, &QTimer::timeout, this, QOverload<>::of(&DiligentWidget::update));
     m_renderTimer->start(16);
+
+    // Initialize frame timer for deltaTime
+    m_frameTimer.start();
+
+    // Setup context menu
+    setupContextMenu();
+
+    LOG_DEBUG("DiligentWidget created");
 }
 
 DiligentWidget::~DiligentWidget()
 {
+    LOG_DEBUG("DiligentWidget destroying");
+
     m_renderTimer->stop();
 
     // Release resources in correct order
@@ -53,10 +65,55 @@ DiligentWidget::~DiligentWidget()
     m_pDevice.Release();
 }
 
+void DiligentWidget::setupContextMenu()
+{
+    m_contextMenu = new QMenu(this);
+
+    // View submenu
+    QMenu* viewMenu = m_contextMenu->addMenu(tr("View"));
+
+    QAction* frontAction = viewMenu->addAction(tr("Front (Numpad 1)"));
+    connect(frontAction, &QAction::triggered, this, &DiligentWidget::onContextMenuViewFront);
+
+    QAction* backAction = viewMenu->addAction(tr("Back (Ctrl+Numpad 1)"));
+    connect(backAction, &QAction::triggered, this, &DiligentWidget::onContextMenuViewBack);
+
+    viewMenu->addSeparator();
+
+    QAction* rightAction = viewMenu->addAction(tr("Right (Numpad 3)"));
+    connect(rightAction, &QAction::triggered, this, &DiligentWidget::onContextMenuViewRight);
+
+    QAction* leftAction = viewMenu->addAction(tr("Left (Ctrl+Numpad 3)"));
+    connect(leftAction, &QAction::triggered, this, &DiligentWidget::onContextMenuViewLeft);
+
+    viewMenu->addSeparator();
+
+    QAction* topAction = viewMenu->addAction(tr("Top (Numpad 7)"));
+    connect(topAction, &QAction::triggered, this, &DiligentWidget::onContextMenuViewTop);
+
+    QAction* bottomAction = viewMenu->addAction(tr("Bottom (Ctrl+Numpad 7)"));
+    connect(bottomAction, &QAction::triggered, this, &DiligentWidget::onContextMenuViewBottom);
+
+    viewMenu->addSeparator();
+
+    QAction* isoAction = viewMenu->addAction(tr("Isometric (Numpad 0)"));
+    connect(isoAction, &QAction::triggered, this, &DiligentWidget::onContextMenuViewIsometric);
+
+    m_contextMenu->addSeparator();
+
+    QAction* resetAction = m_contextMenu->addAction(tr("Reset View (Home)"));
+    connect(resetAction, &QAction::triggered, this, &DiligentWidget::onContextMenuResetView);
+
+    QAction* orthoAction = m_contextMenu->addAction(tr("Toggle Orthographic (Numpad 5)"));
+    connect(orthoAction, &QAction::triggered, this, &DiligentWidget::onContextMenuToggleOrtho);
+}
+
 void DiligentWidget::initializeDiligent()
 {
     if (m_initialized)
         return;
+
+    LOG_INFO("Initializing DiligentEngine...");
 
 #ifdef _WIN32
     HWND hwnd = reinterpret_cast<HWND>(winId());
@@ -65,14 +122,14 @@ void DiligentWidget::initializeDiligent()
     auto GetEngineFactoryD3D11 = LoadGraphicsEngineD3D11();
     if (!GetEngineFactoryD3D11)
     {
-        qCritical() << "Failed to load GraphicsEngineD3D11 DLL!";
+        MW_LOG_ERROR("Failed to load GraphicsEngineD3D11 DLL!");
         return;
     }
 
     auto* pFactoryD3D11 = GetEngineFactoryD3D11();
     if (!pFactoryD3D11)
     {
-        qCritical() << "Failed to get D3D11 engine factory!";
+        MW_LOG_ERROR("Failed to get D3D11 engine factory!");
         return;
     }
 
@@ -85,7 +142,7 @@ void DiligentWidget::initializeDiligent()
 
     if (!m_pDevice)
     {
-        qCritical() << "Failed to create D3D11 render device!";
+        MW_LOG_ERROR("Failed to create D3D11 render device!");
         return;
     }
 
@@ -107,14 +164,14 @@ void DiligentWidget::initializeDiligent()
 
     if (!m_pSwapChain)
     {
-        qCritical() << "Failed to create swap chain!";
+        MW_LOG_ERROR("Failed to create swap chain!");
         return;
     }
 
     // Initialize mesh renderer
     if (!m_meshRenderer.initialize(m_pDevice, m_pSwapChain))
     {
-        qCritical() << "Failed to initialize mesh renderer!";
+        MW_LOG_ERROR("Failed to initialize mesh renderer!");
         return;
     }
 
@@ -122,11 +179,11 @@ void DiligentWidget::initializeDiligent()
     m_camera.setAspectRatio(static_cast<float>(width()) / static_cast<float>(height()));
 
     m_initialized = true;
+    LOG_INFO("DiligentEngine initialized successfully");
     emit initialized();
 
-
 #else
-    qCritical() << "Non-Windows platforms not yet supported";
+    MW_LOG_ERROR("Non-Windows platforms not yet supported");
 #endif
 }
 
@@ -150,6 +207,17 @@ void DiligentWidget::render()
     if (!m_initialized || !m_pSwapChain)
         return;
 
+    // Calculate deltaTime
+    float deltaTime = m_frameTimer.elapsed() / 1000.0f;
+    m_frameTimer.restart();
+
+    // Clamp deltaTime to prevent huge jumps
+    if (deltaTime > 0.1f)
+        deltaTime = 0.1f;
+
+    // Update camera (smoothing, inertia, animation)
+    m_camera.update(deltaTime);
+
     auto* pRTV = m_pSwapChain->GetCurrentBackBufferRTV();
     auto* pDSV = m_pSwapChain->GetDepthBufferDSV();
 
@@ -170,7 +238,7 @@ void DiligentWidget::render()
     // Clear render target with dark gray color
     const float clearColor[] = {0.15f, 0.15f, 0.18f, 1.0f};
     m_pContext->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    m_pContext->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);  // Standard depth: clear to 1
+    m_pContext->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // Render mesh if loaded
     if (m_meshRenderer.hasMesh())
@@ -211,37 +279,88 @@ void DiligentWidget::resizeEvent(QResizeEvent* event)
     }
 }
 
+RotationConstraint DiligentWidget::getRotationConstraint() const
+{
+    if (m_ctrlHeld)
+    {
+        return RotationConstraint::Snap45;
+    }
+    // For horizontal/vertical only constraint, we would need first movement direction
+    // For now, just return None when Shift is held (could be enhanced later)
+    return RotationConstraint::None;
+}
+
 void DiligentWidget::mousePressEvent(QMouseEvent* event)
 {
     m_lastMousePos = event->pos();
 
-    if (event->button() == Qt::LeftButton)
+    // Update modifier state
+    m_shiftHeld = event->modifiers() & Qt::ShiftModifier;
+    m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
+    m_altHeld = event->modifiers() & Qt::AltModifier;
+
+    // Blender-style controls:
+    // MMB = rotate
+    // Shift+MMB = pan
+    // Also support: LMB for rotate (current style fallback)
+
+    if (event->button() == Qt::MiddleButton)
     {
-        m_rotating = true;
+        if (m_shiftHeld)
+        {
+            m_panning = true;
+            m_camera.beginPan();
+        }
+        else
+        {
+            m_rotating = true;
+            m_camera.beginRotate();
+        }
     }
-    else if (event->button() == Qt::MiddleButton)
+    else if (event->button() == Qt::LeftButton)
     {
-        m_panning = true;
+        // LMB rotates (fallback for users without MMB)
+        m_rotating = true;
+        m_camera.beginRotate();
     }
     else if (event->button() == Qt::RightButton)
     {
+        // RMB pans (fallback)
         m_panning = true;
+        m_camera.beginPan();
     }
 }
 
 void DiligentWidget::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton)
+    if (event->button() == Qt::MiddleButton)
     {
-        m_rotating = false;
+        if (m_rotating)
+        {
+            m_rotating = false;
+            m_camera.endRotate();
+        }
+        if (m_panning)
+        {
+            m_panning = false;
+            m_camera.endPan();
+        }
     }
-    else if (event->button() == Qt::MiddleButton)
+    else if (event->button() == Qt::LeftButton)
     {
-        m_panning = false;
+        if (m_rotating)
+        {
+            m_rotating = false;
+            m_camera.endRotate();
+        }
     }
     else if (event->button() == Qt::RightButton)
     {
-        m_panning = false;
+        if (m_panning)
+        {
+            m_panning = false;
+            m_camera.endPan();
+        }
     }
 }
 
@@ -250,25 +369,169 @@ void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
     QPoint delta = event->pos() - m_lastMousePos;
     m_lastMousePos = event->pos();
 
+    // Update modifier state
+    m_shiftHeld = event->modifiers() & Qt::ShiftModifier;
+    m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
+
     if (m_rotating)
     {
-        // Rotate camera (sensitivity: 0.5 degrees per pixel)
-        m_camera.rotate(delta.x() * 0.5f, delta.y() * 0.5f);
+        // Rotate camera with optional constraints
+        RotationConstraint constraint = getRotationConstraint();
+        m_camera.rotate(static_cast<float>(delta.x()), static_cast<float>(delta.y()), constraint);
     }
     else if (m_panning)
     {
         // Pan camera (scale by window size for consistent feel)
         float scaleX = delta.x() / static_cast<float>(width());
         float scaleY = delta.y() / static_cast<float>(height());
-        m_camera.pan(scaleX * 5.0f, -scaleY * 5.0f);
+        m_camera.pan(scaleX, -scaleY);
     }
 }
 
 void DiligentWidget::wheelEvent(QWheelEvent* event)
 {
+    // Get cursor position for zoom-to-cursor
+    QPointF pos = event->position();
+    float cursorX = static_cast<float>(pos.x()) / static_cast<float>(width());
+    float cursorY = static_cast<float>(pos.y()) / static_cast<float>(height());
+
     // Zoom camera (positive delta = zoom in)
     float delta = event->angleDelta().y() / 120.0f;
-    m_camera.zoom(delta);
+    m_camera.zoom(delta, cursorX, cursorY);
+}
+
+void DiligentWidget::keyPressEvent(QKeyEvent* event)
+{
+    // Update modifier state
+    m_shiftHeld = event->modifiers() & Qt::ShiftModifier;
+    m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
+    m_altHeld = event->modifiers() & Qt::AltModifier;
+
+    // Handle view preset keys (Blender-style numpad)
+    switch (event->key())
+    {
+        // Numpad view presets
+        case Qt::Key_1:
+            if (event->modifiers() & Qt::KeypadModifier)
+            {
+                if (m_ctrlHeld)
+                    m_camera.setViewPreset(ViewPreset::Back);
+                else
+                    m_camera.setViewPreset(ViewPreset::Front);
+            }
+            break;
+
+        case Qt::Key_3:
+            if (event->modifiers() & Qt::KeypadModifier)
+            {
+                if (m_ctrlHeld)
+                    m_camera.setViewPreset(ViewPreset::Left);
+                else
+                    m_camera.setViewPreset(ViewPreset::Right);
+            }
+            break;
+
+        case Qt::Key_7:
+            if (event->modifiers() & Qt::KeypadModifier)
+            {
+                if (m_ctrlHeld)
+                    m_camera.setViewPreset(ViewPreset::Bottom);
+                else
+                    m_camera.setViewPreset(ViewPreset::Top);
+            }
+            break;
+
+        case Qt::Key_0:
+            if (event->modifiers() & Qt::KeypadModifier)
+            {
+                m_camera.setViewPreset(ViewPreset::Isometric);
+            }
+            break;
+
+        case Qt::Key_5:
+            if (event->modifiers() & Qt::KeypadModifier)
+            {
+                m_camera.toggleOrthographic();
+            }
+            break;
+
+        // Home key for reset view
+        case Qt::Key_Home:
+            m_camera.reset();
+            break;
+
+        // Period/Delete for focus (if we had selection)
+        case Qt::Key_Period:
+            // Future: focus on selection
+            break;
+
+        default:
+            QWidget::keyPressEvent(event);
+            return;
+    }
+
+    event->accept();
+}
+
+void DiligentWidget::keyReleaseEvent(QKeyEvent* event)
+{
+    // Update modifier state
+    m_shiftHeld = event->modifiers() & Qt::ShiftModifier;
+    m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
+    m_altHeld = event->modifiers() & Qt::AltModifier;
+
+    QWidget::keyReleaseEvent(event);
+}
+
+void DiligentWidget::contextMenuEvent(QContextMenuEvent* event)
+{
+    m_contextMenu->exec(event->globalPos());
+}
+
+// Context menu slots
+void DiligentWidget::onContextMenuViewFront()
+{
+    m_camera.setViewPreset(ViewPreset::Front);
+}
+
+void DiligentWidget::onContextMenuViewBack()
+{
+    m_camera.setViewPreset(ViewPreset::Back);
+}
+
+void DiligentWidget::onContextMenuViewLeft()
+{
+    m_camera.setViewPreset(ViewPreset::Left);
+}
+
+void DiligentWidget::onContextMenuViewRight()
+{
+    m_camera.setViewPreset(ViewPreset::Right);
+}
+
+void DiligentWidget::onContextMenuViewTop()
+{
+    m_camera.setViewPreset(ViewPreset::Top);
+}
+
+void DiligentWidget::onContextMenuViewBottom()
+{
+    m_camera.setViewPreset(ViewPreset::Bottom);
+}
+
+void DiligentWidget::onContextMenuViewIsometric()
+{
+    m_camera.setViewPreset(ViewPreset::Isometric);
+}
+
+void DiligentWidget::onContextMenuResetView()
+{
+    m_camera.reset();
+}
+
+void DiligentWidget::onContextMenuToggleOrtho()
+{
+    m_camera.toggleOrthographic();
 }
 
 } // namespace MoldWing
