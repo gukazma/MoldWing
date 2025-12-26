@@ -33,6 +33,7 @@
 | 渲染引擎 | DiligentEngine |
 | 几何处理 | CGAL + Eigen3 |
 | 模型加载 | assimp |
+| 日志系统 | **spdlog** |
 
 ## 项目结构
 
@@ -72,6 +73,7 @@ MoldWing/
     "cgal",
     "eigen3",
     "stb",
+    "spdlog",
     { "name": "qtbase", "features": ["widgets", "gui", "opengl"] }
   ]
 }
@@ -81,17 +83,29 @@ MoldWing/
 
 | 里程碑 | 功能 | 状态 |
 |-------|------|------|
-| M1 | 基础框架（Qt+DiligentEngine集成） | 待开始 |
-| M2 | 框选 | 待开始 |
-| M3 | 刷选 | 待开始 |
-| M4 | 套索选择 | 待开始 |
-| M5 | 连通选择 | 待开始 |
-| M6 | UV/纹理视图 | 待开始 |
-| M7 | 基础绘制（画笔/橡皮/填充） | 待开始 |
-| M8 | 克隆/修复工具 | 待开始 |
-| M9 | 颜色调整 | 待开始 |
-| M10 | 几何修复（孔洞/非流形） | 待开始 |
-| M11 | 导入导出（OBJ/OSGB） | 待开始 |
+| M1 | 基础框架（Qt+DiligentEngine集成） | 🔄 75% |
+| M2 | 框选 | ⏳ 待开始 |
+| M3 | 刷选 | ⏳ 待开始 |
+| M4 | 套索选择 | ⏳ 待开始 |
+| M5 | 连通选择 | ⏳ 待开始 |
+| M6 | UV/纹理视图 | ⏳ 待开始 |
+| M7 | 基础绘制（画笔/橡皮/填充） | ⏳ 待开始 |
+| M8 | 克隆/修复工具 | ⏳ 待开始 |
+| M9 | 颜色调整 | ⏳ 待开始 |
+| M10 | 几何修复（孔洞/非流形） | ⏳ 待开始 |
+| M11 | 导入导出（OBJ/OSGB） | ⏳ 待开始 |
+
+### M1 已完成模块
+- ✅ 项目骨架搭建（CMake + vcpkg）
+- ✅ Qt + DiligentEngine 集成（DiligentWidget）
+- ✅ 网格数据结构（Vertex, MeshData, BoundingBox）
+- ✅ 模型加载（MeshLoader + assimp）
+- ✅ 网格渲染（MeshRenderer + PSO）
+- ✅ 相机系统（OrbitCamera）
+- ✅ 主窗口基础布局（菜单/工具栏/状态栏）
+- 🔄 撤销系统（QUndoStack 已集成，QUndoView 待完成）
+- ⏳ DockWidget 布局（待完成）
+- 🔄 **日志系统（spdlog + 崩溃捕获）- 开发中**
 
 ## 构建命令
 
