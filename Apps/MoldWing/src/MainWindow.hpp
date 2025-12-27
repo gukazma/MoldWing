@@ -18,6 +18,7 @@ class QListWidget;
 class QLabel;
 class QSlider;
 class QSpinBox;
+class QDoubleSpinBox;
 class QGroupBox;
 
 namespace MoldWing
@@ -47,6 +48,9 @@ private slots:
     void onInvertSelection();
     void onSelectionChanged();
     void onBrushRadiusChanged(int radius);
+    void onLinkAngleThresholdChanged(double angle);
+    void onGrowSelection();
+    void onShrinkSelection();
 
 private:
     void setupMenus();
@@ -78,10 +82,16 @@ private:
     QSlider* m_brushRadiusSlider = nullptr;
     QSpinBox* m_brushRadiusSpinBox = nullptr;
 
+    // M5: Link settings widgets
+    QGroupBox* m_linkSettingsGroup = nullptr;
+    QSlider* m_linkAngleSlider = nullptr;
+    QDoubleSpinBox* m_linkAngleSpinBox = nullptr;
+
     // Menus
     QMenu* m_fileMenu = nullptr;
     QMenu* m_editMenu = nullptr;
     QMenu* m_viewMenu = nullptr;
+    QMenu* m_selectMenu = nullptr;  // New selection menu
 
     // Actions
     QAction* m_openAction = nullptr;
@@ -92,6 +102,8 @@ private:
     QAction* m_selectAllAction = nullptr;
     QAction* m_deselectAction = nullptr;
     QAction* m_invertSelectionAction = nullptr;
+    QAction* m_growSelectionAction = nullptr;
+    QAction* m_shrinkSelectionAction = nullptr;
     QAction* m_resetViewAction = nullptr;
 
     // Current mesh data

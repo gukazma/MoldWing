@@ -87,7 +87,7 @@ MoldWing/
 | M2 | 框选 | ✅ 100% |
 | M3 | 刷选 | ✅ 100% |
 | M4 | 套索选择 | ✅ 100% |
-| M5 | 连通选择 | ⏳ 待开始 |
+| M5 | 连通选择 | ✅ 100% |
 | M6 | UV/纹理视图 | ⏳ 待开始 |
 | M7 | 基础绘制（画笔/橡皮/填充） | ⏳ 待开始 |
 | M8 | 克隆/修复工具 | ⏳ 待开始 |
@@ -130,6 +130,16 @@ MoldWing/
 - ✅ 点在多边形内判断（QPolygonF::containsPoint）
 - ✅ 面中心投影到屏幕空间（OrbitCamera::worldToScreen）
 - ✅ 撤销支持（SelectFacesCommand）
+
+### M5 已完成模块
+- ✅ 面-面邻接表构建（MeshData::buildAdjacency）
+- ✅ 面法向量计算（MeshData::computeFaceNormals）
+- ✅ 连通选择 BFS 算法（SelectionSystem::selectLinked）
+- ✅ 基于角度的连通选择（SelectionSystem::selectByAngle）
+- ✅ 选择扩展功能（SelectionSystem::growSelection）
+- ✅ 选择收缩功能（SelectionSystem::shrinkSelection）
+- ✅ 属性面板角度阈值滑块（QSlider + QDoubleSpinBox）
+- ✅ 菜单快捷键（Ctrl++ 扩展选择, Ctrl+- 收缩选择）
 
 ## 构建命令
 
@@ -200,6 +210,8 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 | Ctrl+A | 全选 |
 | Ctrl+D | 取消选择 |
 | Ctrl+Shift+I | 反选 |
+| Ctrl++ | 扩展选择 |
+| Ctrl+- | 收缩选择 |
 | [ | 减小笔刷大小 |
 | ] | 增大笔刷大小 |
 | B | 画笔工具 |
@@ -221,4 +233,4 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 ---
 
 **最后更新**: 2025-12-27
-**项目版本**: 0.1-dev (Qt 方案) - M4 套索选择完成
+**项目版本**: 0.1-dev (Qt 方案) - M5 连通选择完成

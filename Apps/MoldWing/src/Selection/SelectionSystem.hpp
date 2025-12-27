@@ -10,6 +10,7 @@
 
 #include <unordered_set>
 #include <vector>
+#include <array>
 #include <cstdint>
 
 namespace MoldWing
@@ -109,6 +110,47 @@ public:
 
     // Internal: set selection directly (used by undo/redo)
     void setSelection(const std::unordered_set<uint32_t>& faces);
+
+    // M5: Connected selection operations
+    /**
+     * @brief Select all faces connected to the seed face via shared edges (BFS)
+     * @param adjacency Face adjacency list from MeshData
+     * @param seedFace The starting face index
+     * @param op Selection operation mode
+     * @return Set of all connected faces including the seed
+     */
+    std::unordered_set<uint32_t> selectLinked(
+        const std::vector<std::unordered_set<uint32_t>>& adjacency,
+        uint32_t seedFace,
+        SelectionOp op = SelectionOp::Replace);
+
+    /**
+     * @brief Select connected faces with angle constraint
+     * @param adjacency Face adjacency list from MeshData
+     * @param faceNormals Pre-computed face normals
+     * @param seedFace The starting face index
+     * @param angleThreshold Maximum angle (degrees) between adjacent face normals
+     * @param op Selection operation mode
+     * @return Set of faces connected within angle threshold
+     */
+    std::unordered_set<uint32_t> selectByAngle(
+        const std::vector<std::unordered_set<uint32_t>>& adjacency,
+        const std::vector<std::array<float, 3>>& faceNormals,
+        uint32_t seedFace,
+        float angleThreshold,
+        SelectionOp op = SelectionOp::Replace);
+
+    /**
+     * @brief Expand selection to include all adjacent faces
+     * @param adjacency Face adjacency list from MeshData
+     */
+    void growSelection(const std::vector<std::unordered_set<uint32_t>>& adjacency);
+
+    /**
+     * @brief Shrink selection by removing boundary faces
+     * @param adjacency Face adjacency list from MeshData
+     */
+    void shrinkSelection(const std::vector<std::unordered_set<uint32_t>>& adjacency);
 
 signals:
     /**

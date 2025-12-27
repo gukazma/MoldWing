@@ -25,6 +25,7 @@
 #include <QGroupBox>
 #include <QSlider>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QApplication>
 
 namespace MoldWing
@@ -116,6 +117,17 @@ void MainWindow::setupMenus()
     m_invertSelectionAction = m_editMenu->addAction(tr("&Invert Selection"));
     m_invertSelectionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
     connect(m_invertSelectionAction, &QAction::triggered, this, &MainWindow::onInvertSelection);
+
+    m_editMenu->addSeparator();
+
+    // M5: Grow/Shrink selection
+    m_growSelectionAction = m_editMenu->addAction(tr("&Grow Selection"));
+    m_growSelectionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus));
+    connect(m_growSelectionAction, &QAction::triggered, this, &MainWindow::onGrowSelection);
+
+    m_shrinkSelectionAction = m_editMenu->addAction(tr("S&hrink Selection"));
+    m_shrinkSelectionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus));
+    connect(m_shrinkSelectionAction, &QAction::triggered, this, &MainWindow::onShrinkSelection);
 
     // View menu
     m_viewMenu = menuBar()->addMenu(tr("&View"));
@@ -230,6 +242,69 @@ void MainWindow::setupDockWidgets()
 
     // Initially hide brush settings (only show when brush mode is active)
     m_brushSettingsGroup->setVisible(false);
+
+    // -------------------------------------------------------------------------
+    // M5: Link Settings Group
+    // -------------------------------------------------------------------------
+    m_linkSettingsGroup = new QGroupBox(tr("Link Settings"), propertyWidget);
+    QVBoxLayout* linkLayout = new QVBoxLayout(m_linkSettingsGroup);
+
+    // Angle threshold row
+    QHBoxLayout* angleRow = new QHBoxLayout();
+    QLabel* angleLabel = new QLabel(tr("Angle:"), m_linkSettingsGroup);
+    angleRow->addWidget(angleLabel);
+
+    m_linkAngleSlider = new QSlider(Qt::Horizontal, m_linkSettingsGroup);
+    m_linkAngleSlider->setRange(static_cast<int>(DiligentWidget::MIN_ANGLE_THRESHOLD),
+                                 static_cast<int>(DiligentWidget::MAX_ANGLE_THRESHOLD));
+    m_linkAngleSlider->setValue(static_cast<int>(DiligentWidget::DEFAULT_ANGLE_THRESHOLD));
+    angleRow->addWidget(m_linkAngleSlider, 1);
+
+    m_linkAngleSpinBox = new QDoubleSpinBox(m_linkSettingsGroup);
+    m_linkAngleSpinBox->setRange(DiligentWidget::MIN_ANGLE_THRESHOLD, DiligentWidget::MAX_ANGLE_THRESHOLD);
+    m_linkAngleSpinBox->setValue(DiligentWidget::DEFAULT_ANGLE_THRESHOLD);
+    m_linkAngleSpinBox->setSuffix(tr("°"));
+    m_linkAngleSpinBox->setDecimals(1);
+    angleRow->addWidget(m_linkAngleSpinBox);
+
+    linkLayout->addLayout(angleRow);
+
+    // Hint label
+    QLabel* hintLabel = new QLabel(tr("180° = select all connected\n0° = select coplanar only"), m_linkSettingsGroup);
+    hintLabel->setStyleSheet("color: gray; font-size: 10px;");
+    linkLayout->addWidget(hintLabel);
+
+    m_linkSettingsGroup->setLayout(linkLayout);
+
+    // Connect slider and spinbox bidirectionally
+    connect(m_linkAngleSlider, &QSlider::valueChanged, this, [this](int value) {
+        m_linkAngleSpinBox->blockSignals(true);
+        m_linkAngleSpinBox->setValue(value);
+        m_linkAngleSpinBox->blockSignals(false);
+        onLinkAngleThresholdChanged(value);
+    });
+    connect(m_linkAngleSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+        m_linkAngleSlider->blockSignals(true);
+        m_linkAngleSlider->setValue(static_cast<int>(value));
+        m_linkAngleSlider->blockSignals(false);
+        onLinkAngleThresholdChanged(value);
+    });
+
+    // Connect to viewport angle threshold
+    connect(m_viewport3D, &DiligentWidget::linkAngleThresholdChanged, this, [this](float angle) {
+        // Update UI when angle threshold changes externally
+        m_linkAngleSlider->blockSignals(true);
+        m_linkAngleSpinBox->blockSignals(true);
+        m_linkAngleSlider->setValue(static_cast<int>(angle));
+        m_linkAngleSpinBox->setValue(angle);
+        m_linkAngleSlider->blockSignals(false);
+        m_linkAngleSpinBox->blockSignals(false);
+    });
+
+    propertyLayout->addWidget(m_linkSettingsGroup);
+
+    // Initially hide link settings (only show when link mode is active)
+    m_linkSettingsGroup->setVisible(false);
 
     propertyLayout->addStretch();
 
@@ -398,9 +473,15 @@ void MainWindow::onToolSelected(int index)
 
     // Show/hide brush settings based on tool
     bool isBrushTool = (index == 1);
+    bool isLinkTool = (index == 3);
+
     if (m_brushSettingsGroup)
     {
         m_brushSettingsGroup->setVisible(isBrushTool);
+    }
+    if (m_linkSettingsGroup)
+    {
+        m_linkSettingsGroup->setVisible(isLinkTool);
     }
 
     // Selection tools (0-3)
@@ -425,7 +506,7 @@ void MainWindow::onToolSelected(int index)
                 break;
             case 3:  // Connected Select
                 m_viewport3D->selectionSystem()->setMode(SelectionMode::Link);
-                statusBar()->showMessage(tr("Connected selection mode (not yet implemented)"));
+                statusBar()->showMessage(tr("Connected selection mode - click to select connected faces"));
                 break;
         }
     }
@@ -509,6 +590,70 @@ void MainWindow::onBrushRadiusChanged(int radius)
     {
         m_viewport3D->setBrushRadius(radius);
     }
+}
+
+void MainWindow::onLinkAngleThresholdChanged(double angle)
+{
+    if (m_viewport3D)
+    {
+        m_viewport3D->setLinkAngleThreshold(static_cast<float>(angle));
+    }
+}
+
+void MainWindow::onGrowSelection()
+{
+    if (!m_viewport3D || !m_viewport3D->selectionSystem() || !m_currentMesh)
+        return;
+
+    if (m_currentMesh->faceAdjacency.empty())
+    {
+        LOG_WARN("Mesh has no adjacency data for grow selection");
+        return;
+    }
+
+    // Save current selection for undo
+    auto oldSelection = m_viewport3D->selectionSystem()->selectedFaces();
+
+    // Grow selection
+    m_viewport3D->selectionSystem()->growSelection(m_currentMesh->faceAdjacency);
+
+    // Create undo command
+    if (m_undoStack)
+    {
+        auto newSelection = m_viewport3D->selectionSystem()->selectedFaces();
+        m_undoStack->push(new SelectFacesCommand(m_viewport3D->selectionSystem(),
+                          newSelection, tr("Grow Selection")));
+    }
+
+    LOG_DEBUG("扩展选择");
+}
+
+void MainWindow::onShrinkSelection()
+{
+    if (!m_viewport3D || !m_viewport3D->selectionSystem() || !m_currentMesh)
+        return;
+
+    if (m_currentMesh->faceAdjacency.empty())
+    {
+        LOG_WARN("Mesh has no adjacency data for shrink selection");
+        return;
+    }
+
+    // Save current selection for undo
+    auto oldSelection = m_viewport3D->selectionSystem()->selectedFaces();
+
+    // Shrink selection
+    m_viewport3D->selectionSystem()->shrinkSelection(m_currentMesh->faceAdjacency);
+
+    // Create undo command
+    if (m_undoStack)
+    {
+        auto newSelection = m_viewport3D->selectionSystem()->selectedFaces();
+        m_undoStack->push(new SelectFacesCommand(m_viewport3D->selectionSystem(),
+                          newSelection, tr("Shrink Selection")));
+    }
+
+    LOG_DEBUG("收缩选择");
 }
 
 } // namespace MoldWing

@@ -447,6 +447,10 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
             {
                 beginLassoSelect(event->pos());
             }
+            else if (m_selectionSystem->mode() == SelectionMode::Link)
+            {
+                performLinkSelect(event->pos());
+            }
             else
             {
                 beginBoxSelect(event->pos());
@@ -1206,6 +1210,101 @@ void DiligentWidget::endLassoSelect()
 
     m_lassoPath.clear();
     m_lassoRenderer.clearPath();
+}
+
+// M5: Link selection
+
+void DiligentWidget::setLinkAngleThreshold(float angle)
+{
+    float newAngle = std::max(MIN_ANGLE_THRESHOLD, std::min(angle, MAX_ANGLE_THRESHOLD));
+    if (std::abs(newAngle - m_linkAngleThreshold) > 0.01f)
+    {
+        m_linkAngleThreshold = newAngle;
+        emit linkAngleThresholdChanged(m_linkAngleThreshold);
+        LOG_DEBUG("Link angle threshold changed to {}", m_linkAngleThreshold);
+    }
+}
+
+void DiligentWidget::performLinkSelect(const QPoint& pos)
+{
+    if (!m_facePicker.isInitialized() || !m_facePicker.hasMesh() || !m_currentMesh)
+        return;
+
+    // Render ID buffer
+    m_facePicker.renderIDBuffer(m_pContext, m_camera);
+
+    // Read face ID at cursor position (account for DPI scaling)
+    qreal dpr = devicePixelRatio();
+    int x = static_cast<int>(pos.x() * dpr);
+    int y = static_cast<int>(pos.y() * dpr);
+
+    uint32_t seedFace = m_facePicker.readFaceID(m_pContext, x, y);
+
+    if (seedFace == FacePicker::INVALID_FACE_ID)
+    {
+        // Clicked on background - clear selection (if Replace mode)
+        if (getSelectionOp() == SelectionOp::Replace)
+        {
+            if (m_undoStack)
+            {
+                m_undoStack->push(new SelectFacesCommand(m_selectionSystem, {}));
+            }
+            else
+            {
+                m_selectionSystem->clearSelection();
+            }
+        }
+        return;
+    }
+
+    SelectionOp op = getSelectionOp();
+
+    // Check if we have adjacency data
+    if (m_currentMesh->faceAdjacency.empty())
+    {
+        LOG_WARN("Mesh has no adjacency data for link selection");
+        return;
+    }
+
+    // Perform connected selection with or without angle constraint
+    std::unordered_set<uint32_t> connectedFaces;
+
+    if (m_linkAngleThreshold >= MAX_ANGLE_THRESHOLD - 0.01f)
+    {
+        // No angle constraint - select all connected faces
+        connectedFaces = m_selectionSystem->selectLinked(
+            m_currentMesh->faceAdjacency, seedFace, op);
+    }
+    else
+    {
+        // With angle constraint
+        if (m_currentMesh->faceNormals.empty())
+        {
+            LOG_WARN("Mesh has no face normals for angle-based selection");
+            // Fall back to simple linked selection
+            connectedFaces = m_selectionSystem->selectLinked(
+                m_currentMesh->faceAdjacency, seedFace, op);
+        }
+        else
+        {
+            connectedFaces = m_selectionSystem->selectByAngle(
+                m_currentMesh->faceAdjacency,
+                m_currentMesh->faceNormals,
+                seedFace,
+                m_linkAngleThreshold,
+                op);
+        }
+    }
+
+    // Create undo command
+    if (m_undoStack && !connectedFaces.empty())
+    {
+        auto finalSelection = m_selectionSystem->selectedFaces();
+        m_undoStack->push(new SelectFacesCommand(m_selectionSystem, finalSelection,
+                          QObject::tr("Link Select")));
+    }
+
+    LOG_DEBUG("Link select: {} faces from seed {}", connectedFaces.size(), seedFace);
 }
 
 } // namespace MoldWing

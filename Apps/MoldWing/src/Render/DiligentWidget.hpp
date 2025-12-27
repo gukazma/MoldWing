@@ -78,15 +78,25 @@ public:
     int brushRadius() const { return m_brushRadius; }
     void setBrushRadius(int radius);
 
+    // M5: Link selection settings
+    float linkAngleThreshold() const { return m_linkAngleThreshold; }
+    void setLinkAngleThreshold(float angle);
+
     // Brush radius limits
     static constexpr int MIN_BRUSH_RADIUS = 5;
     static constexpr int MAX_BRUSH_RADIUS = 200;
     static constexpr int DEFAULT_BRUSH_RADIUS = 30;
 
+    // Link selection angle limits
+    static constexpr float MIN_ANGLE_THRESHOLD = 0.0f;
+    static constexpr float MAX_ANGLE_THRESHOLD = 180.0f;
+    static constexpr float DEFAULT_ANGLE_THRESHOLD = 30.0f;
+
 signals:
     void initialized();
     void interactionModeChanged(InteractionMode mode);
     void brushRadiusChanged(int radius);
+    void linkAngleThresholdChanged(float angle);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -134,6 +144,9 @@ private:
     void updateLassoSelect(const QPoint& pos);
     void endLassoSelect();
 
+    // M5: Link selection helper
+    void performLinkSelect(const QPoint& pos);
+
     SelectionOp getSelectionOp() const;
 
     // DiligentEngine objects
@@ -173,6 +186,9 @@ private:
     LassoRenderer m_lassoRenderer;
     QPolygonF m_lassoPath;            // Lasso path in screen coordinates
     bool m_lassoSelecting = false;    // True when drawing lasso
+
+    // M5: Link selection
+    float m_linkAngleThreshold = DEFAULT_ANGLE_THRESHOLD;
 
     // Interaction mode
     InteractionMode m_interactionMode = InteractionMode::Camera;

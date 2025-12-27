@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <string>
+#include <array>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
@@ -85,6 +86,10 @@ struct MeshData
     // faceAdjacency[faceId] = set of adjacent face IDs
     std::vector<std::unordered_set<uint32_t>> faceAdjacency;
 
+    // Face normals (computed for angle-based selection)
+    // faceNormals[faceId] = {nx, ny, nz}
+    std::vector<std::array<float, 3>> faceNormals;
+
     // Helper methods
     uint32_t faceCount() const { return static_cast<uint32_t>(indices.size() / 3); }
     uint32_t vertexCount() const { return static_cast<uint32_t>(vertices.size()); }
@@ -99,12 +104,14 @@ struct MeshData
     }
 
     void buildAdjacency();
+    void computeFaceNormals();
 
     void clear()
     {
         vertices.clear();
         indices.clear();
         faceAdjacency.clear();
+        faceNormals.clear();
     }
 };
 

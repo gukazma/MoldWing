@@ -119,6 +119,9 @@ std::shared_ptr<MeshData> MeshLoader::loadOBJ(const QString& filePath)
     // Build face adjacency for selection operations
     meshData->buildAdjacency();
 
+    // Compute face normals for angle-based selection (M5)
+    meshData->computeFaceNormals();
+
     return meshData;
 }
 
