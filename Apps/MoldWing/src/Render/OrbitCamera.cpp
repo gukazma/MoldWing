@@ -156,15 +156,25 @@ void OrbitCamera::updateInertia(float deltaTime)
             float cosPitch = std::cos(pitchRad);
             float sinPitch = std::sin(pitchRad);
 
-            // Right vector
-            float rightX = cosYaw;
-            float rightY = 0.0f;
-            float rightZ = -sinYaw;
-
-            // Forward direction
+            // Camera forward direction (Z-up system)
             float fwdX = -cosPitch * sinYaw;
-            float fwdY = -sinPitch;
-            float fwdZ = -cosPitch * cosYaw;
+            float fwdY = -cosPitch * cosYaw;
+            float fwdZ = -sinPitch;
+
+            // World up is Z
+            float worldUpX = 0.0f, worldUpY = 0.0f, worldUpZ = 1.0f;
+
+            // Right vector = forward x worldUp
+            float rightX = fwdY * worldUpZ - fwdZ * worldUpY;
+            float rightY = fwdZ * worldUpX - fwdX * worldUpZ;
+            float rightZ = fwdX * worldUpY - fwdY * worldUpX;
+
+            // Normalize right
+            float rightLen = std::sqrt(rightX*rightX + rightY*rightY + rightZ*rightZ);
+            if (rightLen > 0.0001f)
+            {
+                rightX /= rightLen; rightY /= rightLen; rightZ /= rightLen;
+            }
 
             // Up vector = right x forward
             float upX = rightY * fwdZ - rightZ * fwdY;
@@ -311,8 +321,8 @@ void OrbitCamera::rotate(float deltaYaw, float deltaPitch, RotationConstraint co
     }
 
     // Update target state
-    // Invert yaw so dragging left rotates view left (camera moves right)
-    m_targetState.yaw -= deltaYaw;
+    // In Z-up system, positive yaw = counter-clockwise when viewed from above
+    m_targetState.yaw += deltaYaw;
     m_targetState.yaw = applyYawConstraint(m_targetState.yaw);
 
     m_targetState.pitch += deltaPitch;
@@ -330,8 +340,8 @@ void OrbitCamera::rotate(float deltaYaw, float deltaPitch, RotationConstraint co
         m_targetState.pitch = snapAngle(m_targetState.pitch, 90.0f);
     }
 
-    // Store for inertia (negate yaw to match inverted rotation)
-    m_lastDeltaYaw = -deltaYaw;
+    // Store for inertia
+    m_lastDeltaYaw = deltaYaw;
     m_lastDeltaPitch = deltaPitch;
 }
 
@@ -386,7 +396,7 @@ void OrbitCamera::pan(float pixelDeltaX, float pixelDeltaY, int viewportWidth, i
     // For perspective: height = 2 * distance * tan(fov/2)
     // For orthographic: use orthoScale directly
     float worldHeight, worldWidth;
-    
+
     if (m_targetState.orthographic)
     {
         worldHeight = m_targetState.orthoScale * 2.0f;
@@ -410,21 +420,33 @@ void OrbitCamera::pan(float pixelDeltaX, float pixelDeltaY, int viewportWidth, i
     float yawRad = m_targetState.yaw * DEG_TO_RAD;
     float pitchRad = m_targetState.pitch * DEG_TO_RAD;
 
-    // Calculate camera basis vectors for proper view-plane panning
+    // Calculate camera basis vectors for proper view-plane panning (Z-up)
     float cosYaw = std::cos(yawRad);
     float sinYaw = std::sin(yawRad);
     float cosPitch = std::cos(pitchRad);
     float sinPitch = std::sin(pitchRad);
 
-    // Right vector (always horizontal, perpendicular to view direction)
-    float rightX = cosYaw;
-    float rightY = 0.0f;
-    float rightZ = -sinYaw;
-
-    // Camera forward direction (from camera to target)
+    // Camera forward direction (from camera to target) - Z-up system
     float fwdX = -cosPitch * sinYaw;
-    float fwdY = -sinPitch;
-    float fwdZ = -cosPitch * cosYaw;
+    float fwdY = -cosPitch * cosYaw;
+    float fwdZ = -sinPitch;
+
+    // World up is Z
+    float worldUpX = 0.0f, worldUpY = 0.0f, worldUpZ = 1.0f;
+
+    // Right vector = forward x worldUp
+    float rightX = fwdY * worldUpZ - fwdZ * worldUpY;
+    float rightY = fwdZ * worldUpX - fwdX * worldUpZ;
+    float rightZ = fwdX * worldUpY - fwdY * worldUpX;
+
+    // Normalize right
+    float rightLen = std::sqrt(rightX*rightX + rightY*rightY + rightZ*rightZ);
+    if (rightLen > 0.0001f)
+    {
+        rightX /= rightLen;
+        rightY /= rightLen;
+        rightZ /= rightLen;
+    }
 
     // Up vector = right x forward (perpendicular to both, in view plane)
     float upX = rightY * fwdZ - rightZ * fwdY;
@@ -458,8 +480,8 @@ void OrbitCamera::zoom(float delta, float cursorX, float cursorY)
 {
     // Direct zoom without sensitivity reduction for responsive feel
     // delta is typically ~1.0 per scroll tick
-    
-    float zoomFactor = std::pow(0.85f, delta);  // ~15% per scroll tick
+    // Negate delta: scroll up = zoom in (closer), scroll down = zoom out (farther)
+    float zoomFactor = std::pow(0.85f, -delta);  // ~15% per scroll tick
     float oldDistance = m_targetState.distance;
     float newDistance = oldDistance * zoomFactor;
     
@@ -472,53 +494,62 @@ void OrbitCamera::zoom(float delta, float cursorX, float cursorY)
         // Convert cursor to NDC (-1 to 1)
         float ndcX = (cursorX * 2.0f - 1.0f);
         float ndcY = (1.0f - cursorY * 2.0f);
-        
-        // Calculate the world offset at cursor position
+
+        // Get camera position and orientation
         float yawRad = m_targetState.yaw * DEG_TO_RAD;
         float pitchRad = m_targetState.pitch * DEG_TO_RAD;
-        
+
         float cosYaw = std::cos(yawRad);
         float sinYaw = std::sin(yawRad);
         float cosPitch = std::cos(pitchRad);
         float sinPitch = std::sin(pitchRad);
-        
-        // Camera basis vectors
-        float rightX = cosYaw;
-        float rightY = 0.0f;
-        float rightZ = -sinYaw;
-        
+
+        // Camera forward direction (Z-up system)
         float fwdX = -cosPitch * sinYaw;
-        float fwdY = -sinPitch;
-        float fwdZ = -cosPitch * cosYaw;
-        
+        float fwdY = -cosPitch * cosYaw;
+        float fwdZ = -sinPitch;
+
+        // World up is Z
+        float worldUpX = 0.0f, worldUpY = 0.0f, worldUpZ = 1.0f;
+
+        // Right vector = forward x worldUp
+        float rightX = fwdY * worldUpZ - fwdZ * worldUpY;
+        float rightY = fwdZ * worldUpX - fwdX * worldUpZ;
+        float rightZ = fwdX * worldUpY - fwdY * worldUpX;
+
+        // Normalize right
+        float rightLen = std::sqrt(rightX*rightX + rightY*rightY + rightZ*rightZ);
+        if (rightLen > 0.0001f) { rightX /= rightLen; rightY /= rightLen; rightZ /= rightLen; }
+
+        // Up vector = right x forward
         float upX = rightY * fwdZ - rightZ * fwdY;
         float upY = rightZ * fwdX - rightX * fwdZ;
         float upZ = rightX * fwdY - rightY * fwdX;
-        
+
         // Normalize up
         float upLen = std::sqrt(upX*upX + upY*upY + upZ*upZ);
         if (upLen > 0.0001f) { upX /= upLen; upY /= upLen; upZ /= upLen; }
-        
+
         // Calculate view plane size at target distance
         float tanHalfFov = std::tan(m_settings.fov * DEG_TO_RAD * 0.5f);
         float halfHeight = oldDistance * tanHalfFov;
         float halfWidth = halfHeight * m_aspectRatio;
-        
+
         // World offset from view center to cursor point
         float worldOffsetX = rightX * ndcX * halfWidth + upX * ndcY * halfHeight;
         float worldOffsetY = rightY * ndcX * halfWidth + upY * ndcY * halfHeight;
         float worldOffsetZ = rightZ * ndcX * halfWidth + upZ * ndcY * halfHeight;
-        
+
         // The cursor point in world space (relative to target)
         // To keep this point stationary, we need to move the target
         // New offset at new distance
         float newHalfHeight = newDistance * tanHalfFov;
         float newHalfWidth = newHalfHeight * m_aspectRatio;
-        
+
         float newWorldOffsetX = rightX * ndcX * newHalfWidth + upX * ndcY * newHalfHeight;
         float newWorldOffsetY = rightY * ndcX * newHalfWidth + upY * ndcY * newHalfHeight;
         float newWorldOffsetZ = rightZ * ndcX * newHalfWidth + upZ * ndcY * newHalfHeight;
-        
+
         // Move target to compensate for the offset change
         m_targetState.targetX += worldOffsetX - newWorldOffsetX;
         m_targetState.targetY += worldOffsetY - newWorldOffsetY;
@@ -728,10 +759,11 @@ void OrbitCamera::getPosition(float& x, float& y, float& z) const
     float yawRad = m_currentState.yaw * DEG_TO_RAD;
     float pitchRad = m_currentState.pitch * DEG_TO_RAD;
 
+    // Z-up coordinate system: yaw rotates around Z axis
     float cosPitch = std::cos(pitchRad);
     x = m_currentState.targetX + m_currentState.distance * cosPitch * std::sin(yawRad);
-    y = m_currentState.targetY + m_currentState.distance * std::sin(pitchRad);
-    z = m_currentState.targetZ + m_currentState.distance * cosPitch * std::cos(yawRad);
+    y = m_currentState.targetY + m_currentState.distance * cosPitch * std::cos(yawRad);
+    z = m_currentState.targetZ + m_currentState.distance * std::sin(pitchRad);
 }
 
 bool OrbitCamera::hasInertia() const
@@ -783,8 +815,8 @@ void OrbitCamera::getViewMatrix(float* m) const
         lookX /= len; lookY /= len; lookZ /= len;
     }
 
-    // Up vector (world Y)
-    float upX = 0.0f, upY = 1.0f, upZ = 0.0f;
+    // Up vector (world Z for Z-up coordinate system)
+    float upX = 0.0f, upY = 0.0f, upZ = 1.0f;
 
     // Right = look x up
     float rightX = lookY * upZ - lookZ * upY;
@@ -865,21 +897,31 @@ void OrbitCamera::screenToWorldRay(float screenX, float screenY,
     float yawRad = m_currentState.yaw * DEG_TO_RAD;
     float pitchRad = m_currentState.pitch * DEG_TO_RAD;
 
-    // Calculate camera basis vectors
+    // Calculate camera basis vectors (Z-up system)
     float cosPitch = std::cos(pitchRad);
     float sinPitch = std::sin(pitchRad);
     float cosYaw = std::cos(yawRad);
     float sinYaw = std::sin(yawRad);
 
-    // Forward (look direction)
+    // Forward (look direction) - Z-up system
     float fwdX = -cosPitch * sinYaw;
-    float fwdY = -sinPitch;
-    float fwdZ = -cosPitch * cosYaw;
+    float fwdY = -cosPitch * cosYaw;
+    float fwdZ = -sinPitch;
 
-    // Right
-    float rightX = cosYaw;
-    float rightY = 0.0f;
-    float rightZ = -sinYaw;
+    // World up is Z
+    float worldUpX = 0.0f, worldUpY = 0.0f, worldUpZ = 1.0f;
+
+    // Right = forward x worldUp
+    float rightX = fwdY * worldUpZ - fwdZ * worldUpY;
+    float rightY = fwdZ * worldUpX - fwdX * worldUpZ;
+    float rightZ = fwdX * worldUpY - fwdY * worldUpX;
+
+    // Normalize right
+    float rightLen = std::sqrt(rightX*rightX + rightY*rightY + rightZ*rightZ);
+    if (rightLen > 0.0001f)
+    {
+        rightX /= rightLen; rightY /= rightLen; rightZ /= rightLen;
+    }
 
     // Up = right x forward
     float upX = rightY * fwdZ - rightZ * fwdY;

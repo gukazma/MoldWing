@@ -9,17 +9,17 @@ namespace MoldWing
 {
 
 /**
- * @brief View preset enumeration for standard views
+ * @brief View preset enumeration for standard views (Z-up coordinate system)
  */
 enum class ViewPreset
 {
     Custom,     // Current user-defined view
-    Front,      // +Z looking towards -Z (yaw=0, pitch=0)
-    Back,       // -Z looking towards +Z (yaw=180, pitch=0)
-    Left,       // -X looking towards +X (yaw=90, pitch=0)
-    Right,      // +X looking towards -X (yaw=-90, pitch=0)
-    Top,        // +Y looking down (yaw=0, pitch=89)
-    Bottom,     // -Y looking up (yaw=0, pitch=-89)
+    Front,      // Camera at -Y looking towards +Y (yaw=180, pitch=0)
+    Back,       // Camera at +Y looking towards -Y (yaw=0, pitch=0)
+    Left,       // Camera at +X looking towards -X (yaw=90, pitch=0)
+    Right,      // Camera at -X looking towards +X (yaw=-90, pitch=0)
+    Top,        // Camera at +Z looking down (yaw=0, pitch=89)
+    Bottom,     // Camera at -Z looking up (yaw=0, pitch=-89)
     Isometric   // 45 degree isometric view (yaw=45, pitch=35.264)
 };
 
@@ -121,29 +121,29 @@ struct CameraState
 };
 
 /**
- * @brief Get yaw/pitch for a view preset
+ * @brief Get yaw/pitch for a view preset (Z-up coordinate system)
  */
 inline void getPresetAngles(ViewPreset preset, float& yaw, float& pitch)
 {
     switch (preset)
     {
         case ViewPreset::Front:
-            yaw = 0.0f; pitch = 0.0f;
+            yaw = 180.0f; pitch = 0.0f;  // Camera at -Y, looking at +Y
             break;
         case ViewPreset::Back:
-            yaw = 180.0f; pitch = 0.0f;
+            yaw = 0.0f; pitch = 0.0f;    // Camera at +Y, looking at -Y
             break;
         case ViewPreset::Left:
-            yaw = 90.0f; pitch = 0.0f;
+            yaw = 90.0f; pitch = 0.0f;   // Camera at +X, looking at -X
             break;
         case ViewPreset::Right:
-            yaw = -90.0f; pitch = 0.0f;
+            yaw = -90.0f; pitch = 0.0f;  // Camera at -X, looking at +X
             break;
         case ViewPreset::Top:
-            yaw = 0.0f; pitch = 89.0f;
+            yaw = 0.0f; pitch = 89.0f;   // Camera at +Z, looking down
             break;
         case ViewPreset::Bottom:
-            yaw = 0.0f; pitch = -89.0f;
+            yaw = 0.0f; pitch = -89.0f;  // Camera at -Z, looking up
             break;
         case ViewPreset::Isometric:
             yaw = 45.0f; pitch = 35.264f;  // arctan(1/sqrt(2))
