@@ -38,6 +38,11 @@ private slots:
     void onOpenFile();
     void onSaveFile();
     void onResetView();
+    void onToolSelected(int index);
+    void onSelectAll();
+    void onDeselect();
+    void onInvertSelection();
+    void onSelectionChanged();
 
 private:
     void setupMenus();
@@ -75,6 +80,9 @@ private:
     QAction* m_exitAction = nullptr;
     QAction* m_undoAction = nullptr;
     QAction* m_redoAction = nullptr;
+    QAction* m_selectAllAction = nullptr;
+    QAction* m_deselectAction = nullptr;
+    QAction* m_invertSelectionAction = nullptr;
     QAction* m_resetViewAction = nullptr;
 
     // Current mesh data

@@ -311,7 +311,8 @@ void OrbitCamera::rotate(float deltaYaw, float deltaPitch, RotationConstraint co
     }
 
     // Update target state
-    m_targetState.yaw += deltaYaw;
+    // Invert yaw so dragging left rotates view left (camera moves right)
+    m_targetState.yaw -= deltaYaw;
     m_targetState.yaw = applyYawConstraint(m_targetState.yaw);
 
     m_targetState.pitch += deltaPitch;
@@ -329,8 +330,8 @@ void OrbitCamera::rotate(float deltaYaw, float deltaPitch, RotationConstraint co
         m_targetState.pitch = snapAngle(m_targetState.pitch, 90.0f);
     }
 
-    // Store for inertia
-    m_lastDeltaYaw = deltaYaw;
+    // Store for inertia (negate yaw to match inverted rotation)
+    m_lastDeltaYaw = -deltaYaw;
     m_lastDeltaPitch = deltaPitch;
 }
 

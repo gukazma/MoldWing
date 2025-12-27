@@ -84,7 +84,7 @@ MoldWing/
 | 里程碑 | 功能 | 状态 |
 |-------|------|------|
 | M1 | 基础框架（Qt+DiligentEngine集成） | ✅ 100% |
-| M2 | 框选 | ⏳ 待开始 |
+| M2 | 框选 | ✅ 100% |
 | M3 | 刷选 | ⏳ 待开始 |
 | M4 | 套索选择 | ⏳ 待开始 |
 | M5 | 连通选择 | ⏳ 待开始 |
@@ -106,6 +106,14 @@ MoldWing/
 - ✅ 撤销系统（QUndoStack + QUndoView）
 - ✅ DockWidget 布局（工具/属性/历史面板 + 布局保存）
 - ✅ 日志系统（spdlog + Windows MiniDump 崩溃捕获）
+
+### M2 已完成模块
+- ✅ GPU 拾取系统（FacePicker + SV_PrimitiveID 渲染）
+- ✅ 选择系统核心（SelectionSystem + Qt 信号）
+- ✅ 框选实现（SelectionBoxRenderer + 鼠标交互）
+- ✅ 选择可视化（SelectionRenderer + DepthBias 解决 z-fighting）
+- ✅ 选择操作快捷键（Ctrl+A/D, Ctrl+Shift+I）
+- ✅ 撤销支持（SelectFacesCommand）
 
 ## 构建命令
 
@@ -184,4 +192,4 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 ---
 
 **最后更新**: 2025-12-27
-**项目版本**: 0.1-dev (Qt 方案) - M1 完成
+**项目版本**: 0.1-dev (Qt 方案) - M2 框选完成

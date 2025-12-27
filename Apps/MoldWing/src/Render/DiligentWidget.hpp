@@ -1,7 +1,7 @@
 /*
  *  MoldWing - DiligentWidget
  *  Qt widget that hosts DiligentEngine rendering
- *  Enhanced with Blender-style camera controls
+ *  Enhanced with Blender-style camera controls and selection
  */
 
 #pragma once
@@ -13,6 +13,7 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QElapsedTimer>
+#include <QUndoStack>
 
 // DiligentEngine headers
 #include "Graphics/GraphicsEngine/interface/RenderDevice.h"
@@ -23,7 +24,11 @@
 #include "OrbitCamera.hpp"
 #include "MeshRenderer.hpp"
 #include "PivotIndicator.hpp"
+#include "SelectionBoxRenderer.hpp"
 #include "Core/MeshData.hpp"
+#include "Selection/SelectionSystem.hpp"
+#include "Selection/FacePicker.hpp"
+#include "Selection/SelectionRenderer.hpp"
 
 #include <memory>
 
@@ -47,8 +52,26 @@ public:
     OrbitCamera& camera() { return m_camera; }
     const OrbitCamera& camera() const { return m_camera; }
 
+    // Selection system access
+    SelectionSystem* selectionSystem() { return m_selectionSystem; }
+    const SelectionSystem* selectionSystem() const { return m_selectionSystem; }
+
+    // Set undo stack for selection commands
+    void setUndoStack(QUndoStack* stack) { m_undoStack = stack; }
+
+    // Interaction mode
+    enum class InteractionMode
+    {
+        Camera,     // Camera manipulation (default)
+        Selection   // Selection mode (box select)
+    };
+
+    InteractionMode interactionMode() const { return m_interactionMode; }
+    void setInteractionMode(InteractionMode mode);
+
 signals:
     void initialized();
+    void interactionModeChanged(InteractionMode mode);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -81,6 +104,12 @@ private:
     // Get current rotation constraint based on modifier keys
     RotationConstraint getRotationConstraint() const;
 
+    // Selection helpers
+    void beginBoxSelect(const QPoint& pos);
+    void updateBoxSelect(const QPoint& pos);
+    void endBoxSelect();
+    SelectionOp getSelectionOp() const;
+
     // DiligentEngine objects
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice>  m_pDevice;
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> m_pContext;
@@ -94,6 +123,21 @@ private:
     MeshRenderer m_meshRenderer;
     PivotIndicator m_pivotIndicator;
     OrbitCamera m_camera;
+
+    // Selection system
+    SelectionSystem* m_selectionSystem = nullptr;
+    FacePicker m_facePicker;
+    SelectionRenderer m_selectionRenderer;
+    QUndoStack* m_undoStack = nullptr;
+
+    // Box selection
+    SelectionBoxRenderer m_selectionBoxRenderer;
+    QPoint m_boxSelectStart;
+    QPoint m_boxSelectCurrent;
+    bool m_boxSelecting = false;
+
+    // Interaction mode
+    InteractionMode m_interactionMode = InteractionMode::Camera;
 
     // Mouse tracking
     QPoint m_lastMousePos;

@@ -37,6 +37,7 @@ set(RENDER_SOURCES
     src/Render/OrbitCamera.cpp
     src/Render/MeshRenderer.cpp
     src/Render/PivotIndicator.cpp
+    src/Render/SelectionBoxRenderer.cpp
 )
 
 set(RENDER_HEADERS
@@ -45,6 +46,7 @@ set(RENDER_HEADERS
     src/Render/OrbitCamera.hpp
     src/Render/MeshRenderer.hpp
     src/Render/PivotIndicator.hpp
+    src/Render/SelectionBoxRenderer.hpp
 )
 
 set(CORE_SOURCES
@@ -71,12 +73,25 @@ set(COMMANDS_HEADERS
     src/Commands/CommandBase.hpp
 )
 
+set(SELECTION_SOURCES
+    src/Selection/FacePicker.cpp
+    src/Selection/SelectionSystem.cpp
+    src/Selection/SelectionRenderer.cpp
+)
+
+set(SELECTION_HEADERS
+    src/Selection/FacePicker.hpp
+    src/Selection/SelectionSystem.hpp
+    src/Selection/SelectionRenderer.hpp
+)
+
 # Combine all sources
 set(ALL_SOURCES
     ${MAIN_SOURCES}
     ${RENDER_SOURCES}
     ${CORE_SOURCES}
     ${IO_SOURCES}
+    ${SELECTION_SOURCES}
 )
 
 set(ALL_HEADERS
@@ -85,6 +100,7 @@ set(ALL_HEADERS
     ${CORE_HEADERS}
     ${IO_HEADERS}
     ${COMMANDS_HEADERS}
+    ${SELECTION_HEADERS}
 )
 
 # =============================================================================
@@ -283,3 +299,4 @@ source_group("src/Render" FILES ${RENDER_SOURCES} ${RENDER_HEADERS})
 source_group("src/Core" FILES ${CORE_SOURCES} ${CORE_HEADERS})
 source_group("src/IO" FILES ${IO_SOURCES} ${IO_HEADERS})
 source_group("src/Commands" FILES ${COMMANDS_HEADERS})
+source_group("src/Selection" FILES ${SELECTION_SOURCES} ${SELECTION_HEADERS})

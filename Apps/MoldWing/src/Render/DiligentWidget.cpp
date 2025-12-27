@@ -23,6 +23,10 @@ using namespace Diligent;
 namespace MoldWing
 {
 
+// =============================================================================
+// DiligentWidget Implementation
+// =============================================================================
+
 DiligentWidget::DiligentWidget(QWidget* parent)
     : QWidget(parent)
 {
@@ -50,6 +54,16 @@ DiligentWidget::DiligentWidget(QWidget* parent)
 
     // Setup context menu
     setupContextMenu();
+
+    // Create selection system
+    m_selectionSystem = new SelectionSystem(this);
+    connect(m_selectionSystem, &SelectionSystem::selectionChanged, this, [this]() {
+        // Update selection renderer when selection changes
+        if (m_selectionRenderer.isInitialized())
+        {
+            m_selectionRenderer.updateSelection(m_selectionSystem->selectedFaces());
+        }
+    });
 
     LOG_DEBUG("DiligentWidget created");
 }
@@ -179,6 +193,29 @@ void DiligentWidget::initializeDiligent()
     // Initialize pivot indicator
     m_pivotIndicator.initialize(m_pDevice);
 
+    // Initialize face picker for GPU picking
+    uint32_t pickerWidth = static_cast<uint32_t>(width() * dpr);
+    uint32_t pickerHeight = static_cast<uint32_t>(height() * dpr);
+    if (!m_facePicker.initialize(m_pDevice, pickerWidth, pickerHeight))
+    {
+        MW_LOG_ERROR("Failed to initialize face picker!");
+        // Non-fatal, selection just won't work
+    }
+
+    // Initialize selection renderer
+    if (!m_selectionRenderer.initialize(m_pDevice, m_pSwapChain))
+    {
+        MW_LOG_ERROR("Failed to initialize selection renderer!");
+        // Non-fatal
+    }
+
+    // Initialize selection box renderer for 2D box selection overlay
+    if (!m_selectionBoxRenderer.initialize(m_pDevice, m_pSwapChain))
+    {
+        MW_LOG_ERROR("Failed to initialize selection box renderer!");
+        // Non-fatal
+    }
+
     // Set camera aspect ratio
     m_camera.setAspectRatio(static_cast<float>(width()) / static_cast<float>(height()));
 
@@ -201,6 +238,21 @@ bool DiligentWidget::loadMesh(const MeshData& mesh)
 
     // Store mesh pointer for ray picking
     m_currentMesh = &mesh;
+
+    // Load mesh into face picker
+    if (m_facePicker.isInitialized())
+    {
+        m_facePicker.loadMesh(mesh);
+    }
+
+    // Load mesh into selection renderer
+    if (m_selectionRenderer.isInitialized())
+    {
+        m_selectionRenderer.loadMesh(mesh);
+    }
+
+    // Update selection system face count
+    m_selectionSystem->setFaceCount(static_cast<uint32_t>(mesh.faceCount()));
 
     // Fit camera to mesh bounds
     const auto& b = mesh.bounds;
@@ -253,12 +305,34 @@ void DiligentWidget::render()
         m_meshRenderer.render(m_pContext, m_camera);
     }
 
+    // Render selection highlight
+    if (m_selectionRenderer.isInitialized() && m_selectionRenderer.hasSelection())
+    {
+        m_selectionRenderer.render(m_pContext, m_camera);
+    }
+
     // Render pivot indicator when rotating
     if (m_rotating && m_pivotIndicator.isInitialized())
     {
         float tx, ty, tz;
         m_camera.getTarget(tx, ty, tz);
         m_pivotIndicator.render(m_pContext, m_camera, tx, ty, tz, 1.0f);
+    }
+
+    // Render selection box overlay when box selecting
+    if (m_boxSelecting && m_selectionBoxRenderer.isInitialized())
+    {
+        QRect selectRect = QRect(m_boxSelectStart, m_boxSelectCurrent).normalized();
+        qreal dpr = devicePixelRatio();
+        m_selectionBoxRenderer.render(
+            m_pContext,
+            static_cast<int>(selectRect.left() * dpr),
+            static_cast<int>(selectRect.top() * dpr),
+            static_cast<int>(selectRect.right() * dpr),
+            static_cast<int>(selectRect.bottom() * dpr),
+            static_cast<int>(swapChainDesc.Width),
+            static_cast<int>(swapChainDesc.Height)
+        );
     }
 
     // Present
@@ -290,6 +364,12 @@ void DiligentWidget::resizeEvent(QResizeEvent* event)
         {
             m_pSwapChain->Resize(newWidth, newHeight);
             m_camera.setAspectRatio(static_cast<float>(newWidth) / static_cast<float>(newHeight));
+
+            // Resize face picker
+            if (m_facePicker.isInitialized())
+            {
+                m_facePicker.resize(newWidth, newHeight);
+            }
         }
     }
 }
@@ -314,7 +394,17 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
     m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
     m_altHeld = event->modifiers() & Qt::AltModifier;
 
-    // Control scheme:
+    // Selection mode: LMB starts box selection
+    if (m_interactionMode == InteractionMode::Selection)
+    {
+        if (event->button() == Qt::LeftButton)
+        {
+            beginBoxSelect(event->pos());
+            return;
+        }
+    }
+
+    // Camera mode controls:
     // LMB = rotate (use current pivot)
     // MMB = pan (recalculate pivot after release)
     // RMB = context menu (handled by contextMenuEvent)
@@ -336,6 +426,13 @@ void DiligentWidget::mouseReleaseEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton)
     {
+        // Handle box selection end
+        if (m_boxSelecting)
+        {
+            endBoxSelect();
+            return;
+        }
+
         if (m_rotating)
         {
             m_rotating = false;
@@ -379,6 +476,13 @@ void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
     // Update modifier state
     m_shiftHeld = event->modifiers() & Qt::ShiftModifier;
     m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
+
+    // Handle box selection drag
+    if (m_boxSelecting)
+    {
+        updateBoxSelect(event->pos());
+        return;
+    }
 
     if (m_rotating)
     {
@@ -539,6 +643,196 @@ void DiligentWidget::onContextMenuResetView()
 void DiligentWidget::onContextMenuToggleOrtho()
 {
     m_camera.toggleOrthographic();
+}
+
+// Selection helper methods
+
+void DiligentWidget::setInteractionMode(InteractionMode mode)
+{
+    if (m_interactionMode != mode)
+    {
+        m_interactionMode = mode;
+        emit interactionModeChanged(mode);
+
+        // Cancel any ongoing box selection when switching modes
+        if (m_boxSelecting)
+        {
+            m_boxSelecting = false;
+        }
+
+        LOG_DEBUG("Interaction mode changed to {}",
+                  mode == InteractionMode::Camera ? "Camera" : "Selection");
+    }
+}
+
+void DiligentWidget::beginBoxSelect(const QPoint& pos)
+{
+    m_boxSelectStart = pos;
+    m_boxSelectCurrent = pos;
+    m_boxSelecting = true;
+}
+
+void DiligentWidget::updateBoxSelect(const QPoint& pos)
+{
+    m_boxSelectCurrent = pos;
+}
+
+void DiligentWidget::endBoxSelect()
+{
+    m_boxSelecting = false;
+
+    // Get selection rectangle
+    QRect selectRect = QRect(m_boxSelectStart, m_boxSelectCurrent).normalized();
+
+    // Skip if rectangle is too small (treat as click)
+    if (selectRect.width() < 3 && selectRect.height() < 3)
+    {
+        // Single click - select single face under cursor
+        if (m_facePicker.isInitialized() && m_facePicker.hasMesh())
+        {
+            // Render ID buffer
+            m_facePicker.renderIDBuffer(m_pContext, m_camera);
+
+            // Read face ID at cursor position (account for DPI scaling)
+            qreal dpr = devicePixelRatio();
+            int x = static_cast<int>(m_lastMousePos.x() * dpr);
+            int y = static_cast<int>(m_lastMousePos.y() * dpr);
+
+            uint32_t faceID = m_facePicker.readFaceID(m_pContext, x, y);
+
+            if (faceID != FacePicker::INVALID_FACE_ID)
+            {
+                // Apply selection operation
+                SelectionOp op = getSelectionOp();
+
+                // Create undo command if undo stack is available
+                if (m_undoStack)
+                {
+                    auto newSelection = m_selectionSystem->selectedFaces();
+                    switch (op)
+                    {
+                        case SelectionOp::Replace:
+                            newSelection.clear();
+                            newSelection.insert(faceID);
+                            break;
+                        case SelectionOp::Add:
+                            newSelection.insert(faceID);
+                            break;
+                        case SelectionOp::Subtract:
+                            newSelection.erase(faceID);
+                            break;
+                        case SelectionOp::Toggle:
+                            if (newSelection.count(faceID))
+                                newSelection.erase(faceID);
+                            else
+                                newSelection.insert(faceID);
+                            break;
+                    }
+                    m_undoStack->push(new SelectFacesCommand(m_selectionSystem, newSelection));
+                }
+                else
+                {
+                    m_selectionSystem->selectSingle(faceID, op);
+                }
+            }
+            else if (getSelectionOp() == SelectionOp::Replace)
+            {
+                // Clicked on background - clear selection
+                if (m_undoStack)
+                {
+                    m_undoStack->push(new SelectFacesCommand(m_selectionSystem, {}));
+                }
+                else
+                {
+                    m_selectionSystem->clearSelection();
+                }
+            }
+        }
+        return;
+    }
+
+    // Box selection
+    if (m_facePicker.isInitialized() && m_facePicker.hasMesh())
+    {
+        // Render ID buffer
+        m_facePicker.renderIDBuffer(m_pContext, m_camera);
+
+        // Read face IDs in rectangle (account for DPI scaling)
+        qreal dpr = devicePixelRatio();
+        int x1 = static_cast<int>(selectRect.left() * dpr);
+        int y1 = static_cast<int>(selectRect.top() * dpr);
+        int x2 = static_cast<int>(selectRect.right() * dpr);
+        int y2 = static_cast<int>(selectRect.bottom() * dpr);
+
+        std::vector<uint32_t> faceIDs = m_facePicker.readFaceIDsInRect(m_pContext, x1, y1, x2, y2);
+
+        if (!faceIDs.empty())
+        {
+            // Apply selection operation
+            SelectionOp op = getSelectionOp();
+
+            if (m_undoStack)
+            {
+                auto newSelection = m_selectionSystem->selectedFaces();
+                switch (op)
+                {
+                    case SelectionOp::Replace:
+                        newSelection.clear();
+                        for (uint32_t f : faceIDs)
+                            newSelection.insert(f);
+                        break;
+                    case SelectionOp::Add:
+                        for (uint32_t f : faceIDs)
+                            newSelection.insert(f);
+                        break;
+                    case SelectionOp::Subtract:
+                        for (uint32_t f : faceIDs)
+                            newSelection.erase(f);
+                        break;
+                    case SelectionOp::Toggle:
+                        for (uint32_t f : faceIDs)
+                        {
+                            if (newSelection.count(f))
+                                newSelection.erase(f);
+                            else
+                                newSelection.insert(f);
+                        }
+                        break;
+                }
+                m_undoStack->push(new SelectFacesCommand(m_selectionSystem, newSelection));
+            }
+            else
+            {
+                m_selectionSystem->select(faceIDs, op);
+            }
+        }
+        else if (getSelectionOp() == SelectionOp::Replace)
+        {
+            // Empty box selection - clear selection
+            if (m_undoStack)
+            {
+                m_undoStack->push(new SelectFacesCommand(m_selectionSystem, {}));
+            }
+            else
+            {
+                m_selectionSystem->clearSelection();
+            }
+        }
+
+        LOG_DEBUG("Box select: {} faces", faceIDs.size());
+    }
+}
+
+SelectionOp DiligentWidget::getSelectionOp() const
+{
+    if (m_shiftHeld && m_ctrlHeld)
+        return SelectionOp::Toggle;
+    else if (m_shiftHeld)
+        return SelectionOp::Add;
+    else if (m_ctrlHeld)
+        return SelectionOp::Subtract;
+    else
+        return SelectionOp::Replace;
 }
 
 } // namespace MoldWing

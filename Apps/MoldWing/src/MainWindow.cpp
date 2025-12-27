@@ -8,6 +8,7 @@
 #include "Core/MeshData.hpp"
 #include "Core/Logger.hpp"
 #include "IO/MeshLoader.hpp"
+#include "Selection/SelectionSystem.hpp"
 
 #include <QMenuBar>
 #include <QToolBar>
@@ -39,6 +40,13 @@ MainWindow::MainWindow(QWidget* parent)
     // Create DiligentEngine viewport as central widget
     m_viewport3D = new DiligentWidget(this);
     setCentralWidget(m_viewport3D);
+
+    // Connect viewport to undo stack
+    m_viewport3D->setUndoStack(m_undoStack);
+
+    // Connect selection changes to update property panel
+    connect(m_viewport3D->selectionSystem(), &SelectionSystem::selectionChanged,
+            this, &MainWindow::onSelectionChanged);
 
     // Setup UI
     setupMenus();
@@ -90,6 +98,21 @@ void MainWindow::setupMenus()
     m_redoAction->setShortcut(QKeySequence::Redo);
     m_editMenu->addAction(m_redoAction);
 
+    m_editMenu->addSeparator();
+
+    // Selection actions
+    m_selectAllAction = m_editMenu->addAction(tr("Select &All"));
+    m_selectAllAction->setShortcut(QKeySequence::SelectAll);
+    connect(m_selectAllAction, &QAction::triggered, this, &MainWindow::onSelectAll);
+
+    m_deselectAction = m_editMenu->addAction(tr("&Deselect"));
+    m_deselectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    connect(m_deselectAction, &QAction::triggered, this, &MainWindow::onDeselect);
+
+    m_invertSelectionAction = m_editMenu->addAction(tr("&Invert Selection"));
+    m_invertSelectionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+    connect(m_invertSelectionAction, &QAction::triggered, this, &MainWindow::onInvertSelection);
+
     // View menu
     m_viewMenu = menuBar()->addMenu(tr("&View"));
 
@@ -137,6 +160,9 @@ void MainWindow::setupDockWidgets()
     m_toolList->addItem(tr("🩹 Healing Brush"));
     m_toolList->setMinimumWidth(150);
     m_toolDock->setWidget(m_toolList);
+
+    // Connect tool selection
+    connect(m_toolList, &QListWidget::currentRowChanged, this, &MainWindow::onToolSelected);
 
     addDockWidget(Qt::LeftDockWidgetArea, m_toolDock);
 
@@ -312,6 +338,90 @@ void MainWindow::onResetView()
     else
     {
         m_viewport3D->camera().reset();
+    }
+}
+
+void MainWindow::onToolSelected(int index)
+{
+    LOG_DEBUG("工具选择: {}", index);
+
+    // First 4 items are selection tools (0-3)
+    if (index >= 0 && index <= 3)
+    {
+        m_viewport3D->setInteractionMode(DiligentWidget::InteractionMode::Selection);
+        statusBar()->showMessage(tr("Selection mode - drag to select faces"));
+    }
+    else
+    {
+        m_viewport3D->setInteractionMode(DiligentWidget::InteractionMode::Camera);
+        statusBar()->showMessage(tr("Tool selected (not yet implemented)"));
+    }
+}
+
+void MainWindow::onSelectAll()
+{
+    if (m_viewport3D && m_viewport3D->selectionSystem())
+    {
+        m_viewport3D->selectionSystem()->selectAll();
+        LOG_DEBUG("全选");
+    }
+}
+
+void MainWindow::onDeselect()
+{
+    if (m_viewport3D && m_viewport3D->selectionSystem())
+    {
+        m_viewport3D->selectionSystem()->clearSelection();
+        LOG_DEBUG("取消选择");
+    }
+}
+
+void MainWindow::onInvertSelection()
+{
+    if (m_viewport3D && m_viewport3D->selectionSystem())
+    {
+        m_viewport3D->selectionSystem()->invertSelection();
+        LOG_DEBUG("反选");
+    }
+}
+
+void MainWindow::onSelectionChanged()
+{
+    if (!m_viewport3D || !m_viewport3D->selectionSystem())
+        return;
+
+    size_t count = m_viewport3D->selectionSystem()->selectionCount();
+
+    if (count == 0)
+    {
+        if (m_currentMesh)
+        {
+            m_propertyLabel->setText(tr("Model: %1\nVertices: %2\nFaces: %3\n\nNo selection")
+                .arg(windowTitle().section(" - ", 1))
+                .arg(m_currentMesh->vertexCount())
+                .arg(m_currentMesh->faceCount()));
+        }
+        else
+        {
+            m_propertyLabel->setText(tr("No selection"));
+        }
+        statusBar()->showMessage(tr("Selection cleared"));
+    }
+    else
+    {
+        if (m_currentMesh)
+        {
+            m_propertyLabel->setText(tr("Model: %1\nVertices: %2\nFaces: %3\n\nSelected: %4 faces")
+                .arg(windowTitle().section(" - ", 1))
+                .arg(m_currentMesh->vertexCount())
+                .arg(m_currentMesh->faceCount())
+                .arg(count));
+        }
+        else
+        {
+            m_propertyLabel->setText(tr("Selected: %1 faces").arg(count));
+        }
+        statusBar()->showMessage(tr("%1 faces selected").arg(count));
     }
 }
 
