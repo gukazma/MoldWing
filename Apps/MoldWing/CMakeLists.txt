@@ -36,6 +36,7 @@ set(RENDER_SOURCES
     src/Render/DiligentWidget.cpp
     src/Render/OrbitCamera.cpp
     src/Render/MeshRenderer.cpp
+    src/Render/PivotIndicator.cpp
 )
 
 set(RENDER_HEADERS
@@ -43,6 +44,7 @@ set(RENDER_HEADERS
     src/Render/CameraSettings.hpp
     src/Render/OrbitCamera.hpp
     src/Render/MeshRenderer.hpp
+    src/Render/PivotIndicator.hpp
 )
 
 set(CORE_SOURCES
@@ -54,6 +56,7 @@ set(CORE_HEADERS
     src/Core/MeshData.hpp
     src/Core/TextureData.hpp
     src/Core/Logger.hpp
+    src/Core/RayIntersection.hpp
 )
 
 set(IO_SOURCES

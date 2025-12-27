@@ -72,11 +72,13 @@ public:
     void endPan();
 
     /**
-     * @brief Pan camera
-     * @param deltaX Horizontal movement in normalized screen coords (-1 to 1)
-     * @param deltaY Vertical movement in normalized screen coords (-1 to 1)
+     * @brief Pan camera with 1:1 screen-to-world mapping
+     * @param pixelDeltaX Horizontal movement in pixels
+     * @param pixelDeltaY Vertical movement in pixels
+     * @param viewportWidth Viewport width in pixels
+     * @param viewportHeight Viewport height in pixels
      */
-    void pan(float deltaX, float deltaY);
+    void pan(float pixelDeltaX, float pixelDeltaY, int viewportWidth, int viewportHeight);
 
     /**
      * @brief Zoom camera

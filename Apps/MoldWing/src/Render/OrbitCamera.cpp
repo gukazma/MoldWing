@@ -149,13 +149,42 @@ void OrbitCamera::updateInertia(float deltaTime)
             std::abs(m_panVelocityY) > m_settings.minVelocity)
         {
             float yawRad = m_targetState.yaw * DEG_TO_RAD;
-            float rightX = std::cos(yawRad);
-            float rightZ = std::sin(yawRad);
+            float pitchRad = m_targetState.pitch * DEG_TO_RAD;
 
-            float panScale = m_targetState.distance * 0.1f;
-            m_targetState.targetX -= rightX * m_panVelocityX * panScale * deltaTime * 60.0f;
-            m_targetState.targetZ -= rightZ * m_panVelocityX * panScale * deltaTime * 60.0f;
-            m_targetState.targetY += m_panVelocityY * panScale * deltaTime * 60.0f;
+            float cosYaw = std::cos(yawRad);
+            float sinYaw = std::sin(yawRad);
+            float cosPitch = std::cos(pitchRad);
+            float sinPitch = std::sin(pitchRad);
+
+            // Right vector
+            float rightX = cosYaw;
+            float rightY = 0.0f;
+            float rightZ = -sinYaw;
+
+            // Forward direction
+            float fwdX = -cosPitch * sinYaw;
+            float fwdY = -sinPitch;
+            float fwdZ = -cosPitch * cosYaw;
+
+            // Up vector = right x forward
+            float upX = rightY * fwdZ - rightZ * fwdY;
+            float upY = rightZ * fwdX - rightX * fwdZ;
+            float upZ = rightX * fwdY - rightY * fwdX;
+
+            // Normalize up
+            float upLen = std::sqrt(upX*upX + upY*upY + upZ*upZ);
+            if (upLen > 0.0001f)
+            {
+                upX /= upLen; upY /= upLen; upZ /= upLen;
+            }
+
+            // Velocities are already in world-space, just apply with time factor
+            float velX = m_panVelocityX * deltaTime * 60.0f;
+            float velY = m_panVelocityY * deltaTime * 60.0f;
+
+            m_targetState.targetX -= (rightX * velX + upX * velY);
+            m_targetState.targetY -= (rightY * velX + upY * velY);
+            m_targetState.targetZ -= (rightZ * velX + upZ * velY);
 
             // Damping
             float damping = std::pow(m_settings.inertiaDamping, deltaTime * 60.0f);
@@ -315,27 +344,77 @@ void OrbitCamera::endPan()
     }
 }
 
-void OrbitCamera::pan(float deltaX, float deltaY)
+void OrbitCamera::pan(float pixelDeltaX, float pixelDeltaY, int viewportWidth, int viewportHeight)
 {
-    // Apply sensitivity
-    deltaX *= m_settings.panSensitivity;
-    deltaY *= m_settings.panSensitivity;
+    if (viewportWidth <= 0 || viewportHeight <= 0)
+        return;
+
+    // Calculate world-space size of viewport at target distance
+    // For perspective: height = 2 * distance * tan(fov/2)
+    // For orthographic: use orthoScale directly
+    float worldHeight, worldWidth;
+    
+    if (m_targetState.orthographic)
+    {
+        worldHeight = m_targetState.orthoScale * 2.0f;
+        worldWidth = worldHeight * m_aspectRatio;
+    }
+    else
+    {
+        float halfFovRad = (m_settings.fov * 0.5f) * DEG_TO_RAD;
+        worldHeight = 2.0f * m_targetState.distance * std::tan(halfFovRad);
+        worldWidth = worldHeight * m_aspectRatio;
+    }
+
+    // Convert pixel movement to world-space movement (1:1 mapping)
+    float worldDeltaX = (pixelDeltaX / static_cast<float>(viewportWidth)) * worldWidth;
+    float worldDeltaY = (pixelDeltaY / static_cast<float>(viewportHeight)) * worldHeight;
+
+    // Apply sensitivity (default 1.0 means 1:1)
+    worldDeltaX *= m_settings.panSensitivity;
+    worldDeltaY *= m_settings.panSensitivity;
 
     float yawRad = m_targetState.yaw * DEG_TO_RAD;
+    float pitchRad = m_targetState.pitch * DEG_TO_RAD;
 
-    // Calculate right and up vectors in world space
-    float rightX = std::cos(yawRad);
-    float rightZ = std::sin(yawRad);
+    // Calculate camera basis vectors for proper view-plane panning
+    float cosYaw = std::cos(yawRad);
+    float sinYaw = std::sin(yawRad);
+    float cosPitch = std::cos(pitchRad);
+    float sinPitch = std::sin(pitchRad);
 
-    // Pan in camera-local XY plane
-    float panScale = m_targetState.distance * 0.5f;
-    m_targetState.targetX -= rightX * deltaX * panScale;
-    m_targetState.targetZ -= rightZ * deltaX * panScale;
-    m_targetState.targetY += deltaY * panScale;
+    // Right vector (always horizontal, perpendicular to view direction)
+    float rightX = cosYaw;
+    float rightY = 0.0f;
+    float rightZ = -sinYaw;
 
-    // Store for inertia
-    m_lastDeltaPanX = deltaX;
-    m_lastDeltaPanY = deltaY;
+    // Camera forward direction (from camera to target)
+    float fwdX = -cosPitch * sinYaw;
+    float fwdY = -sinPitch;
+    float fwdZ = -cosPitch * cosYaw;
+
+    // Up vector = right x forward (perpendicular to both, in view plane)
+    float upX = rightY * fwdZ - rightZ * fwdY;
+    float upY = rightZ * fwdX - rightX * fwdZ;
+    float upZ = rightX * fwdY - rightY * fwdX;
+
+    // Normalize up vector
+    float upLen = std::sqrt(upX*upX + upY*upY + upZ*upZ);
+    if (upLen > 0.0001f)
+    {
+        upX /= upLen;
+        upY /= upLen;
+        upZ /= upLen;
+    }
+
+    // Move target in the view plane (opposite to mouse movement for natural feel)
+    m_targetState.targetX -= rightX * worldDeltaX + upX * worldDeltaY;
+    m_targetState.targetY -= rightY * worldDeltaX + upY * worldDeltaY;
+    m_targetState.targetZ -= rightZ * worldDeltaX + upZ * worldDeltaY;
+
+    // Store normalized delta for inertia
+    m_lastDeltaPanX = worldDeltaX;
+    m_lastDeltaPanY = worldDeltaY;
 }
 
 // =============================================================================
@@ -344,41 +423,79 @@ void OrbitCamera::pan(float deltaX, float deltaY)
 
 void OrbitCamera::zoom(float delta, float cursorX, float cursorY)
 {
-    // Apply sensitivity
-    delta *= m_settings.zoomSensitivity;
-
+    // Direct zoom without sensitivity reduction for responsive feel
+    // delta is typically ~1.0 per scroll tick
+    
+    float zoomFactor = std::pow(0.85f, delta);  // ~15% per scroll tick
     float oldDistance = m_targetState.distance;
-
-    // Calculate new distance
-    m_targetState.distance *= std::pow(0.9f, delta);
-    m_targetState.distance = std::clamp(m_targetState.distance,
-                                         m_settings.minDistance,
-                                         m_settings.maxDistance);
-
-    // Zoom to cursor position
-    if (m_settings.zoomToCursor && (cursorX != 0.5f || cursorY != 0.5f))
+    float newDistance = oldDistance * zoomFactor;
+    
+    // Clamp distance
+    newDistance = std::clamp(newDistance, m_settings.minDistance, m_settings.maxDistance);
+    
+    // Zoom to cursor: keep the point under cursor stationary
+    if (m_settings.zoomToCursor)
     {
-        float distanceDelta = m_targetState.distance - oldDistance;
-
-        // Convert cursor position to view offset (-1 to 1)
-        float offsetX = (cursorX - 0.5f) * 2.0f;
-        float offsetY = (cursorY - 0.5f) * 2.0f;
-
-        // Calculate movement towards cursor
+        // Convert cursor to NDC (-1 to 1)
+        float ndcX = (cursorX * 2.0f - 1.0f);
+        float ndcY = (1.0f - cursorY * 2.0f);
+        
+        // Calculate the world offset at cursor position
         float yawRad = m_targetState.yaw * DEG_TO_RAD;
-
-        float rightX = std::cos(yawRad);
-        float rightZ = std::sin(yawRad);
-
-        // Move target towards cursor position
-        float zoomInfluence = -distanceDelta * 0.3f;
-        m_targetState.targetX += rightX * offsetX * zoomInfluence;
-        m_targetState.targetZ += rightZ * offsetX * zoomInfluence;
-        m_targetState.targetY += offsetY * zoomInfluence;
+        float pitchRad = m_targetState.pitch * DEG_TO_RAD;
+        
+        float cosYaw = std::cos(yawRad);
+        float sinYaw = std::sin(yawRad);
+        float cosPitch = std::cos(pitchRad);
+        float sinPitch = std::sin(pitchRad);
+        
+        // Camera basis vectors
+        float rightX = cosYaw;
+        float rightY = 0.0f;
+        float rightZ = -sinYaw;
+        
+        float fwdX = -cosPitch * sinYaw;
+        float fwdY = -sinPitch;
+        float fwdZ = -cosPitch * cosYaw;
+        
+        float upX = rightY * fwdZ - rightZ * fwdY;
+        float upY = rightZ * fwdX - rightX * fwdZ;
+        float upZ = rightX * fwdY - rightY * fwdX;
+        
+        // Normalize up
+        float upLen = std::sqrt(upX*upX + upY*upY + upZ*upZ);
+        if (upLen > 0.0001f) { upX /= upLen; upY /= upLen; upZ /= upLen; }
+        
+        // Calculate view plane size at target distance
+        float tanHalfFov = std::tan(m_settings.fov * DEG_TO_RAD * 0.5f);
+        float halfHeight = oldDistance * tanHalfFov;
+        float halfWidth = halfHeight * m_aspectRatio;
+        
+        // World offset from view center to cursor point
+        float worldOffsetX = rightX * ndcX * halfWidth + upX * ndcY * halfHeight;
+        float worldOffsetY = rightY * ndcX * halfWidth + upY * ndcY * halfHeight;
+        float worldOffsetZ = rightZ * ndcX * halfWidth + upZ * ndcY * halfHeight;
+        
+        // The cursor point in world space (relative to target)
+        // To keep this point stationary, we need to move the target
+        // New offset at new distance
+        float newHalfHeight = newDistance * tanHalfFov;
+        float newHalfWidth = newHalfHeight * m_aspectRatio;
+        
+        float newWorldOffsetX = rightX * ndcX * newHalfWidth + upX * ndcY * newHalfHeight;
+        float newWorldOffsetY = rightY * ndcX * newHalfWidth + upY * ndcY * newHalfHeight;
+        float newWorldOffsetZ = rightZ * ndcX * newHalfWidth + upZ * ndcY * newHalfHeight;
+        
+        // Move target to compensate for the offset change
+        m_targetState.targetX += worldOffsetX - newWorldOffsetX;
+        m_targetState.targetY += worldOffsetY - newWorldOffsetY;
+        m_targetState.targetZ += worldOffsetZ - newWorldOffsetZ;
     }
-
-    // Add to zoom velocity for smooth feel
-    m_zoomVelocity = delta * 0.5f;
+    
+    m_targetState.distance = newDistance;
+    
+    // Minimal velocity for smooth transition
+    m_zoomVelocity = 0.0f;
 }
 
 // =============================================================================

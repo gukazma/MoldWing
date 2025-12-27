@@ -22,6 +22,7 @@
 
 #include "OrbitCamera.hpp"
 #include "MeshRenderer.hpp"
+#include "PivotIndicator.hpp"
 #include "Core/MeshData.hpp"
 
 #include <memory>
@@ -91,6 +92,7 @@ private:
 
     // Rendering
     MeshRenderer m_meshRenderer;
+    PivotIndicator m_pivotIndicator;
     OrbitCamera m_camera;
 
     // Mouse tracking
@@ -105,6 +107,9 @@ private:
 
     // Context menu
     QMenu* m_contextMenu = nullptr;
+
+    // Current mesh for ray picking (not owned)
+    const MeshData* m_currentMesh = nullptr;
 
     // State
     bool m_initialized = false;

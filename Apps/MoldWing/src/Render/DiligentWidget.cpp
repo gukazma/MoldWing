@@ -5,6 +5,7 @@
 
 #include "DiligentWidget.hpp"
 #include "Core/Logger.hpp"
+#include "Core/RayIntersection.hpp"
 
 #include <QResizeEvent>
 #include <QContextMenuEvent>
@@ -175,6 +176,9 @@ void DiligentWidget::initializeDiligent()
         return;
     }
 
+    // Initialize pivot indicator
+    m_pivotIndicator.initialize(m_pDevice);
+
     // Set camera aspect ratio
     m_camera.setAspectRatio(static_cast<float>(width()) / static_cast<float>(height()));
 
@@ -194,6 +198,9 @@ bool DiligentWidget::loadMesh(const MeshData& mesh)
 
     if (!m_meshRenderer.loadMesh(mesh))
         return false;
+
+    // Store mesh pointer for ray picking
+    m_currentMesh = &mesh;
 
     // Fit camera to mesh bounds
     const auto& b = mesh.bounds;
@@ -244,6 +251,14 @@ void DiligentWidget::render()
     if (m_meshRenderer.hasMesh())
     {
         m_meshRenderer.render(m_pContext, m_camera);
+    }
+
+    // Render pivot indicator when rotating
+    if (m_rotating && m_pivotIndicator.isInitialized())
+    {
+        float tx, ty, tz;
+        m_camera.getTarget(tx, ty, tz);
+        m_pivotIndicator.render(m_pContext, m_camera, tx, ty, tz, 1.0f);
     }
 
     // Present
@@ -299,54 +314,27 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
     m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
     m_altHeld = event->modifiers() & Qt::AltModifier;
 
-    // Blender-style controls:
-    // MMB = rotate
-    // Shift+MMB = pan
-    // Also support: LMB for rotate (current style fallback)
+    // Control scheme:
+    // LMB = rotate (use current pivot)
+    // MMB = pan (recalculate pivot after release)
+    // RMB = context menu (handled by contextMenuEvent)
 
-    if (event->button() == Qt::MiddleButton)
+    if (event->button() == Qt::LeftButton)
     {
-        if (m_shiftHeld)
-        {
-            m_panning = true;
-            m_camera.beginPan();
-        }
-        else
-        {
-            m_rotating = true;
-            m_camera.beginRotate();
-        }
-    }
-    else if (event->button() == Qt::LeftButton)
-    {
-        // LMB rotates (fallback for users without MMB)
         m_rotating = true;
         m_camera.beginRotate();
     }
-    else if (event->button() == Qt::RightButton)
+    else if (event->button() == Qt::MiddleButton)
     {
-        // RMB pans (fallback)
         m_panning = true;
         m_camera.beginPan();
     }
+    // RMB is reserved for context menu
 }
 
 void DiligentWidget::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::MiddleButton)
-    {
-        if (m_rotating)
-        {
-            m_rotating = false;
-            m_camera.endRotate();
-        }
-        if (m_panning)
-        {
-            m_panning = false;
-            m_camera.endPan();
-        }
-    }
-    else if (event->button() == Qt::LeftButton)
+    if (event->button() == Qt::LeftButton)
     {
         if (m_rotating)
         {
@@ -354,14 +342,33 @@ void DiligentWidget::mouseReleaseEvent(QMouseEvent* event)
             m_camera.endRotate();
         }
     }
-    else if (event->button() == Qt::RightButton)
+    else if (event->button() == Qt::MiddleButton)
     {
         if (m_panning)
         {
             m_panning = false;
             m_camera.endPan();
+
+            // After pan, update rotation pivot to screen center hit point
+            if (m_currentMesh && m_currentMesh->faceCount() > 0)
+            {
+                float camPosX, camPosY, camPosZ;
+                m_camera.getPosition(camPosX, camPosY, camPosZ);
+
+                float rayDirX, rayDirY, rayDirZ;
+                m_camera.screenToWorldRay(0.5f, 0.5f, rayDirX, rayDirY, rayDirZ);
+
+                Ray ray(camPosX, camPosY, camPosZ, rayDirX, rayDirY, rayDirZ);
+                HitResult hit;
+
+                if (RayIntersection::rayMesh(ray, *m_currentMesh, hit))
+                {
+                    m_camera.setTarget(hit.hitX, hit.hitY, hit.hitZ);
+                }
+            }
         }
     }
+    // RMB is reserved for context menu
 }
 
 void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
@@ -381,10 +388,10 @@ void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
     }
     else if (m_panning)
     {
-        // Pan camera (scale by window size for consistent feel)
-        float scaleX = delta.x() / static_cast<float>(width());
-        float scaleY = delta.y() / static_cast<float>(height());
-        m_camera.pan(scaleX, -scaleY);
+        // Pan camera with 1:1 screen-to-world mapping
+        // Pass pixel deltas and viewport size for accurate mapping
+        m_camera.pan(static_cast<float>(delta.x()), static_cast<float>(-delta.y()), 
+                     width(), height());
     }
 }
 
