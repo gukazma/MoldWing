@@ -26,10 +26,13 @@
 #include "PivotIndicator.hpp"
 #include "SelectionBoxRenderer.hpp"
 #include "BrushCursorRenderer.hpp"
+#include "LassoRenderer.hpp"
 #include "Core/MeshData.hpp"
 #include "Selection/SelectionSystem.hpp"
 #include "Selection/FacePicker.hpp"
 #include "Selection/SelectionRenderer.hpp"
+
+#include <QPolygonF>
 
 #include <memory>
 #include <unordered_set>
@@ -126,6 +129,11 @@ private:
     void updateBrushSelect(const QPoint& pos);
     void endBrushSelect();
 
+    // Lasso selection helpers
+    void beginLassoSelect(const QPoint& pos);
+    void updateLassoSelect(const QPoint& pos);
+    void endLassoSelect();
+
     SelectionOp getSelectionOp() const;
 
     // DiligentEngine objects
@@ -160,6 +168,11 @@ private:
     int m_brushRadius = DEFAULT_BRUSH_RADIUS;
     bool m_brushSelecting = false;    // True when dragging with brush
     std::unordered_set<uint32_t> m_brushSelectAccumulated;  // Accumulated selection during drag
+
+    // Lasso selection
+    LassoRenderer m_lassoRenderer;
+    QPolygonF m_lassoPath;            // Lasso path in screen coordinates
+    bool m_lassoSelecting = false;    // True when drawing lasso
 
     // Interaction mode
     InteractionMode m_interactionMode = InteractionMode::Camera;

@@ -421,7 +421,7 @@ void MainWindow::onToolSelected(int index)
                 break;
             case 2:  // Lasso Select
                 m_viewport3D->selectionSystem()->setMode(SelectionMode::Lasso);
-                statusBar()->showMessage(tr("Lasso selection mode (not yet implemented)"));
+                statusBar()->showMessage(tr("Lasso selection mode - draw a closed path to select faces"));
                 break;
             case 3:  // Connected Select
                 m_viewport3D->selectionSystem()->setMode(SelectionMode::Link);

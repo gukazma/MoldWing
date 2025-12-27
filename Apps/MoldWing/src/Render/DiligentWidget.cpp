@@ -223,6 +223,13 @@ void DiligentWidget::initializeDiligent()
         // Non-fatal
     }
 
+    // Initialize lasso renderer for lasso selection
+    if (!m_lassoRenderer.initialize(m_pDevice, m_pSwapChain))
+    {
+        MW_LOG_ERROR("Failed to initialize lasso renderer!");
+        // Non-fatal
+    }
+
     // Set camera aspect ratio
     m_camera.setAspectRatio(static_cast<float>(width()) / static_cast<float>(height()));
 
@@ -358,6 +365,16 @@ void DiligentWidget::render()
         );
     }
 
+    // Render lasso path when in lasso selection mode
+    if (m_lassoSelecting && m_lassoRenderer.isInitialized())
+    {
+        m_lassoRenderer.render(
+            m_pContext,
+            static_cast<int>(swapChainDesc.Width),
+            static_cast<int>(swapChainDesc.Height)
+        );
+    }
+
     // Present
     m_pSwapChain->Present();
 }
@@ -426,6 +443,10 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
             {
                 beginBrushSelect(event->pos());
             }
+            else if (m_selectionSystem->mode() == SelectionMode::Lasso)
+            {
+                beginLassoSelect(event->pos());
+            }
             else
             {
                 beginBoxSelect(event->pos());
@@ -434,20 +455,23 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
         }
     }
 
-    // Camera mode controls:
-    // LMB = rotate (use current pivot)
-    // MMB = pan (recalculate pivot after release)
+    // Camera controls:
+    // MMB = rotate
+    // Shift + MMB = pan
     // RMB = context menu (handled by contextMenuEvent)
 
-    if (event->button() == Qt::LeftButton)
+    if (event->button() == Qt::MiddleButton)
     {
-        m_rotating = true;
-        m_camera.beginRotate();
-    }
-    else if (event->button() == Qt::MiddleButton)
-    {
-        m_panning = true;
-        m_camera.beginPan();
+        if (m_shiftHeld)
+        {
+            m_panning = true;
+            m_camera.beginPan();
+        }
+        else
+        {
+            m_rotating = true;
+            m_camera.beginRotate();
+        }
     }
     // RMB is reserved for context menu
 }
@@ -470,14 +494,21 @@ void DiligentWidget::mouseReleaseEvent(QMouseEvent* event)
             return;
         }
 
+        // Handle lasso selection end
+        if (m_lassoSelecting)
+        {
+            endLassoSelect();
+            return;
+        }
+    }
+    else if (event->button() == Qt::MiddleButton)
+    {
         if (m_rotating)
         {
             m_rotating = false;
             m_camera.endRotate();
         }
-    }
-    else if (event->button() == Qt::MiddleButton)
-    {
+
         if (m_panning)
         {
             m_panning = false;
@@ -535,6 +566,13 @@ void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
         return;
     }
 
+    // Handle lasso selection drag
+    if (m_lassoSelecting)
+    {
+        updateLassoSelect(event->pos());
+        return;
+    }
+
     if (m_rotating)
     {
         // Rotate camera with optional constraints
@@ -545,7 +583,7 @@ void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
     {
         // Pan camera with 1:1 screen-to-world mapping
         // Pass pixel deltas and viewport size for accurate mapping
-        m_camera.pan(static_cast<float>(delta.x()), static_cast<float>(-delta.y()), 
+        m_camera.pan(static_cast<float>(delta.x()), static_cast<float>(-delta.y()),
                      width(), height());
     }
 }
@@ -891,14 +929,12 @@ void DiligentWidget::endBoxSelect()
 
 SelectionOp DiligentWidget::getSelectionOp() const
 {
-    if (m_shiftHeld && m_ctrlHeld)
-        return SelectionOp::Toggle;
+    if (m_ctrlHeld)
+        return SelectionOp::Add;       // Ctrl = 增选
     else if (m_shiftHeld)
-        return SelectionOp::Add;
-    else if (m_ctrlHeld)
-        return SelectionOp::Subtract;
+        return SelectionOp::Subtract;  // Shift = 减选
     else
-        return SelectionOp::Replace;
+        return SelectionOp::Replace;   // 默认 = 替换
 }
 
 // Brush selection methods
@@ -994,6 +1030,182 @@ void DiligentWidget::endBrushSelect()
 
     m_brushSelectAccumulated.clear();
     LOG_DEBUG("Brush select ended");
+}
+
+// Lasso selection methods
+
+void DiligentWidget::beginLassoSelect(const QPoint& pos)
+{
+    m_lassoSelecting = true;
+    m_lassoPath.clear();
+    m_lassoPath.append(QPointF(pos));
+
+    // Initialize LassoRenderer path
+    qreal dpr = devicePixelRatio();
+    m_lassoRenderer.beginPath(static_cast<int>(pos.x() * dpr), static_cast<int>(pos.y() * dpr));
+
+    LOG_DEBUG("Lasso select started at ({}, {})", pos.x(), pos.y());
+}
+
+void DiligentWidget::updateLassoSelect(const QPoint& pos)
+{
+    if (!m_lassoSelecting)
+        return;
+
+    // Add point to path
+    m_lassoPath.append(QPointF(pos));
+
+    // Update LassoRenderer
+    qreal dpr = devicePixelRatio();
+    m_lassoRenderer.addPoint(static_cast<int>(pos.x() * dpr), static_cast<int>(pos.y() * dpr));
+}
+
+void DiligentWidget::endLassoSelect()
+{
+    m_lassoSelecting = false;
+
+    // Need at least 3 points to form a polygon
+    if (m_lassoPath.size() < 3)
+    {
+        m_lassoPath.clear();
+        m_lassoRenderer.clearPath();
+        LOG_DEBUG("Lasso select cancelled: not enough points");
+        return;
+    }
+
+    // Close the polygon by connecting back to first point
+    // (QPolygonF::containsPoint handles this automatically)
+
+    if (!m_facePicker.isInitialized() || !m_facePicker.hasMesh() || !m_currentMesh)
+    {
+        m_lassoPath.clear();
+        m_lassoRenderer.clearPath();
+        return;
+    }
+
+    // Render ID buffer to get face IDs
+    m_facePicker.renderIDBuffer(m_pContext, m_camera);
+
+    // Get the bounding box of the lasso path for efficient iteration
+    QRectF bounds = m_lassoPath.boundingRect();
+    qreal dpr = devicePixelRatio();
+
+    int minX = static_cast<int>(bounds.left() * dpr);
+    int minY = static_cast<int>(bounds.top() * dpr);
+    int maxX = static_cast<int>(bounds.right() * dpr);
+    int maxY = static_cast<int>(bounds.bottom() * dpr);
+
+    // Read all face IDs in the bounding box
+    std::vector<uint32_t> faceIDsInRect = m_facePicker.readFaceIDsInRect(m_pContext, minX, minY, maxX, maxY);
+
+    // For each unique face ID, check if its screen-space center is inside the lasso polygon
+    std::unordered_set<uint32_t> selectedFaces;
+
+    // Get unique face IDs
+    std::unordered_set<uint32_t> uniqueFaceIDs(faceIDsInRect.begin(), faceIDsInRect.end());
+
+    // For each face, project its center to screen space and check if inside polygon
+    for (uint32_t faceID : uniqueFaceIDs)
+    {
+        if (faceID == FacePicker::INVALID_FACE_ID)
+            continue;
+
+        // Get face center in world space
+        size_t faceIdx = faceID;
+        if (faceIdx >= m_currentMesh->faceCount())
+            continue;
+
+        // Get face vertices
+        uint32_t i0 = m_currentMesh->indices[faceIdx * 3 + 0];
+        uint32_t i1 = m_currentMesh->indices[faceIdx * 3 + 1];
+        uint32_t i2 = m_currentMesh->indices[faceIdx * 3 + 2];
+
+        const auto& v0 = m_currentMesh->vertices[i0];
+        const auto& v1 = m_currentMesh->vertices[i1];
+        const auto& v2 = m_currentMesh->vertices[i2];
+
+        // Calculate face center
+        float centerX = (v0.position[0] + v1.position[0] + v2.position[0]) / 3.0f;
+        float centerY = (v0.position[1] + v1.position[1] + v2.position[1]) / 3.0f;
+        float centerZ = (v0.position[2] + v1.position[2] + v2.position[2]) / 3.0f;
+
+        // Project to screen space
+        float screenX, screenY;
+        bool visible = m_camera.worldToScreen(centerX, centerY, centerZ, screenX, screenY);
+
+        if (!visible)
+            continue;
+
+        // Convert normalized screen coords to pixel coords
+        float pixelX = screenX * width();
+        float pixelY = screenY * height();
+
+        // Check if point is inside the lasso polygon
+        if (m_lassoPath.containsPoint(QPointF(pixelX, pixelY), Qt::OddEvenFill))
+        {
+            selectedFaces.insert(faceID);
+        }
+    }
+
+    // Apply selection
+    if (!selectedFaces.empty())
+    {
+        std::vector<uint32_t> faceVector(selectedFaces.begin(), selectedFaces.end());
+        SelectionOp op = getSelectionOp();
+
+        if (m_undoStack)
+        {
+            auto newSelection = m_selectionSystem->selectedFaces();
+            switch (op)
+            {
+                case SelectionOp::Replace:
+                    newSelection.clear();
+                    for (uint32_t f : faceVector)
+                        newSelection.insert(f);
+                    break;
+                case SelectionOp::Add:
+                    for (uint32_t f : faceVector)
+                        newSelection.insert(f);
+                    break;
+                case SelectionOp::Subtract:
+                    for (uint32_t f : faceVector)
+                        newSelection.erase(f);
+                    break;
+                case SelectionOp::Toggle:
+                    for (uint32_t f : faceVector)
+                    {
+                        if (newSelection.count(f))
+                            newSelection.erase(f);
+                        else
+                            newSelection.insert(f);
+                    }
+                    break;
+            }
+            m_undoStack->push(new SelectFacesCommand(m_selectionSystem, newSelection));
+        }
+        else
+        {
+            m_selectionSystem->select(faceVector, op);
+        }
+
+        LOG_DEBUG("Lasso select: {} faces", selectedFaces.size());
+    }
+    else if (getSelectionOp() == SelectionOp::Replace)
+    {
+        // Empty lasso selection - clear selection
+        if (m_undoStack)
+        {
+            m_undoStack->push(new SelectFacesCommand(m_selectionSystem, {}));
+        }
+        else
+        {
+            m_selectionSystem->clearSelection();
+        }
+        LOG_DEBUG("Lasso select: cleared selection");
+    }
+
+    m_lassoPath.clear();
+    m_lassoRenderer.clearPath();
 }
 
 } // namespace MoldWing

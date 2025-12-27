@@ -85,8 +85,8 @@ MoldWing/
 |-------|------|------|
 | M1 | 基础框架（Qt+DiligentEngine集成） | ✅ 100% |
 | M2 | 框选 | ✅ 100% |
-| M3 | 刷选 | ⏳ 待开始 |
-| M4 | 套索选择 | ⏳ 待开始 |
+| M3 | 刷选 | ✅ 100% |
+| M4 | 套索选择 | ✅ 100% |
 | M5 | 连通选择 | ⏳ 待开始 |
 | M6 | UV/纹理视图 | ⏳ 待开始 |
 | M7 | 基础绘制（画笔/橡皮/填充） | ⏳ 待开始 |
@@ -113,6 +113,22 @@ MoldWing/
 - ✅ 框选实现（SelectionBoxRenderer + 鼠标交互）
 - ✅ 选择可视化（SelectionRenderer + DepthBias 解决 z-fighting）
 - ✅ 选择操作快捷键（Ctrl+A/D, Ctrl+Shift+I）
+- ✅ 撤销支持（SelectFacesCommand）
+
+### M3 已完成模块
+- ✅ 刷选圆形光标渲染（BrushCursorRenderer + NDC 空间 2D 叠加）
+- ✅ 圆形区域面 ID 读取（FacePicker::readFaceIDsInCircle）
+- ✅ 刷选状态管理（beginBrushSelect/updateBrushSelect/endBrushSelect）
+- ✅ 连续拖拽选择（拖拽过程中累积选择面）
+- ✅ [ ] 快捷键调整笔刷大小
+- ✅ 属性面板笔刷大小滑块（QSlider + QSpinBox 双向同步）
+
+### M4 已完成模块
+- ✅ 套索路径渲染（LassoRenderer + NDC 空间 2D 叠加）
+- ✅ 鼠标轨迹记录（QPolygonF + 采样点简化）
+- ✅ 套索状态管理（beginLassoSelect/updateLassoSelect/endLassoSelect）
+- ✅ 点在多边形内判断（QPolygonF::containsPoint）
+- ✅ 面中心投影到屏幕空间（OrbitCamera::worldToScreen）
 - ✅ 撤销支持（SelectFacesCommand）
 
 ## 构建命令
@@ -184,12 +200,25 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 | Ctrl+A | 全选 |
 | Ctrl+D | 取消选择 |
 | Ctrl+Shift+I | 反选 |
+| [ | 减小笔刷大小 |
+| ] | 增大笔刷大小 |
 | B | 画笔工具 |
 | E | 橡皮擦 |
 | S | 克隆图章 |
 | Delete | 删除选中面 |
 
+## 鼠标操作
+
+| 操作 | 功能 |
+|------|------|
+| 鼠标中键拖动 | 旋转视角 |
+| Shift + 鼠标中键拖动 | 平移视角 |
+| 滚轮 | 缩放（缩放到光标位置） |
+| 左键拖动（选择模式） | 选择（框选/刷选/套索） |
+| Ctrl + 左键拖动 | 增选 |
+| Shift + 左键拖动 | 减选 |
+
 ---
 
 **最后更新**: 2025-12-27
-**项目版本**: 0.1-dev (Qt 方案) - M2 框选完成
+**项目版本**: 0.1-dev (Qt 方案) - M4 套索选择完成

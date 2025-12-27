@@ -39,6 +39,7 @@ set(RENDER_SOURCES
     src/Render/PivotIndicator.cpp
     src/Render/SelectionBoxRenderer.cpp
     src/Render/BrushCursorRenderer.cpp
+    src/Render/LassoRenderer.cpp
 )
 
 set(RENDER_HEADERS
@@ -49,6 +50,7 @@ set(RENDER_HEADERS
     src/Render/PivotIndicator.hpp
     src/Render/SelectionBoxRenderer.hpp
     src/Render/BrushCursorRenderer.hpp
+    src/Render/LassoRenderer.hpp
 )
 
 set(CORE_SOURCES

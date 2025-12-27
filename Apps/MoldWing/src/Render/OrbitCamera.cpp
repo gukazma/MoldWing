@@ -952,4 +952,45 @@ void OrbitCamera::screenToWorldRay(float screenX, float screenY,
     }
 }
 
+bool OrbitCamera::worldToScreen(float worldX, float worldY, float worldZ,
+                                 float& outScreenX, float& outScreenY) const
+{
+    // Get view and projection matrices
+    float viewMatrix[16];
+    float projMatrix[16];
+    getViewMatrix(viewMatrix);
+    getProjectionMatrix(projMatrix);
+
+    // Transform world position by view matrix (row-major)
+    // Result is in view/camera space
+    float viewX = viewMatrix[0] * worldX + viewMatrix[4] * worldY + viewMatrix[8] * worldZ + viewMatrix[12];
+    float viewY = viewMatrix[1] * worldX + viewMatrix[5] * worldY + viewMatrix[9] * worldZ + viewMatrix[13];
+    float viewZ = viewMatrix[2] * worldX + viewMatrix[6] * worldY + viewMatrix[10] * worldZ + viewMatrix[14];
+    float viewW = viewMatrix[3] * worldX + viewMatrix[7] * worldY + viewMatrix[11] * worldZ + viewMatrix[15];
+
+    // Transform by projection matrix
+    float clipX = projMatrix[0] * viewX + projMatrix[4] * viewY + projMatrix[8] * viewZ + projMatrix[12] * viewW;
+    float clipY = projMatrix[1] * viewX + projMatrix[5] * viewY + projMatrix[9] * viewZ + projMatrix[13] * viewW;
+    // clipZ not needed for 2D screen projection
+    float clipW = projMatrix[3] * viewX + projMatrix[7] * viewY + projMatrix[11] * viewZ + projMatrix[15] * viewW;
+
+    // Check if point is behind camera
+    if (clipW <= 0.0f)
+    {
+        outScreenX = 0.0f;
+        outScreenY = 0.0f;
+        return false;
+    }
+
+    // Perspective divide to get NDC (-1 to 1)
+    float ndcX = clipX / clipW;
+    float ndcY = clipY / clipW;
+
+    // Convert to screen coordinates (0 to 1)
+    outScreenX = (ndcX + 1.0f) * 0.5f;
+    outScreenY = (1.0f - ndcY) * 0.5f;  // Flip Y for screen space
+
+    return true;
+}
+
 } // namespace MoldWing

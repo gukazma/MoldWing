@@ -240,6 +240,15 @@ public:
     void screenToWorldRay(float screenX, float screenY,
                           float& outDirX, float& outDirY, float& outDirZ) const;
 
+    /**
+     * @brief Project world position to screen coordinates
+     * @param worldX/Y/Z World position
+     * @param outScreenX/Y Output normalized screen coordinates (0-1)
+     * @return true if point is in front of camera (visible)
+     */
+    bool worldToScreen(float worldX, float worldY, float worldZ,
+                       float& outScreenX, float& outScreenY) const;
+
 private:
     // Interpolation helpers
     void updateSmoothing(float deltaTime);
