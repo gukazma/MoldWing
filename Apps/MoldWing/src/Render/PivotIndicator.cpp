@@ -237,12 +237,7 @@ void PivotIndicator::render(IDeviceContext* pContext,
                             float size)
 {
     if (!m_initialized)
-    {
-        LOG_TRACE("PivotIndicator::render - not initialized");
         return;
-    }
-
-    LOG_TRACE("PivotIndicator::render - drawing at ({}, {}, {})", pivotX, pivotY, pivotZ);
 
     // Get view-projection matrix
     float view[16], proj[16], viewProj[16];

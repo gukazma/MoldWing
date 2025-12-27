@@ -249,9 +249,26 @@ void OrbitCamera::beginRotate()
     m_lastDeltaYaw = 0.0f;
     m_lastDeltaPitch = 0.0f;
 
-    // Stop any ongoing inertia
+    // Stop any ongoing animation - it would overwrite target state
+    m_isAnimating = false;
+    m_animationTime = 0.0f;
+
+    // Stop any ongoing inertia (both rotation and pan)
     m_yawVelocity = 0.0f;
     m_pitchVelocity = 0.0f;
+    m_panVelocityX = 0.0f;
+    m_panVelocityY = 0.0f;
+
+    // Sync target position with current to prevent smoothing-induced panning
+    m_targetState.targetX = m_currentState.targetX;
+    m_targetState.targetY = m_currentState.targetY;
+    m_targetState.targetZ = m_currentState.targetZ;
+
+    // Also sync angles, distance, and orthoScale to prevent ANY smoothing movement
+    m_targetState.yaw = m_currentState.yaw;
+    m_targetState.pitch = m_currentState.pitch;
+    m_targetState.distance = m_currentState.distance;
+    m_targetState.orthoScale = m_currentState.orthoScale;
 }
 
 void OrbitCamera::endRotate()
@@ -327,9 +344,24 @@ void OrbitCamera::beginPan()
     m_lastDeltaPanX = 0.0f;
     m_lastDeltaPanY = 0.0f;
 
-    // Stop any ongoing inertia
+    // Stop any ongoing animation - it would overwrite target state
+    m_isAnimating = false;
+    m_animationTime = 0.0f;
+
+    // Stop any ongoing inertia (both pan and rotation)
     m_panVelocityX = 0.0f;
     m_panVelocityY = 0.0f;
+    m_yawVelocity = 0.0f;
+    m_pitchVelocity = 0.0f;
+
+    // Sync ALL target state with current to prevent ANY smoothing-induced movement
+    m_targetState.targetX = m_currentState.targetX;
+    m_targetState.targetY = m_currentState.targetY;
+    m_targetState.targetZ = m_currentState.targetZ;
+    m_targetState.yaw = m_currentState.yaw;
+    m_targetState.pitch = m_currentState.pitch;
+    m_targetState.distance = m_currentState.distance;
+    m_targetState.orthoScale = m_currentState.orthoScale;
 }
 
 void OrbitCamera::endPan()
@@ -771,9 +803,10 @@ void OrbitCamera::getViewMatrix(float* m) const
     upZ = rightX * lookY - rightY * lookX;
 
     // Build view matrix (row-major for HLSL row-vector * matrix multiplication)
-    m[0] = rightX;  m[1] = rightY;  m[2] = rightZ;   m[3] = 0.0f;
-    m[4] = upX;     m[5] = upY;     m[6] = upZ;      m[7] = 0.0f;
-    m[8] = lookX;   m[9] = lookY;   m[10] = lookZ;   m[11] = 0.0f;
+    // For mul(v, M) form, basis vectors go in COLUMNS, not rows
+    m[0] = rightX;  m[1] = upX;     m[2] = lookX;    m[3] = 0.0f;
+    m[4] = rightY;  m[5] = upY;     m[6] = lookY;    m[7] = 0.0f;
+    m[8] = rightZ;  m[9] = upZ;     m[10] = lookZ;   m[11] = 0.0f;
     m[12] = -(rightX*posX + rightY*posY + rightZ*posZ);
     m[13] = -(upX*posX + upY*posY + upZ*posZ);
     m[14] = -(lookX*posX + lookY*posY + lookZ*posZ);
