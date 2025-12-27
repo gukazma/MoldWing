@@ -91,6 +91,17 @@ public:
                                              int x1, int y1, int x2, int y2);
 
     /**
+     * @brief Read all face IDs within a circular region
+     * @param pContext Device context
+     * @param centerX Center X coordinate in pixels
+     * @param centerY Center Y coordinate in pixels
+     * @param radius Radius in pixels
+     * @return Vector of unique face IDs in the circle
+     */
+    std::vector<uint32_t> readFaceIDsInCircle(Diligent::IDeviceContext* pContext,
+                                               int centerX, int centerY, int radius);
+
+    /**
      * @brief Check if picker is initialized
      */
     bool isInitialized() const { return m_initialized; }

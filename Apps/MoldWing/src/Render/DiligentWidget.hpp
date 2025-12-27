@@ -25,12 +25,14 @@
 #include "MeshRenderer.hpp"
 #include "PivotIndicator.hpp"
 #include "SelectionBoxRenderer.hpp"
+#include "BrushCursorRenderer.hpp"
 #include "Core/MeshData.hpp"
 #include "Selection/SelectionSystem.hpp"
 #include "Selection/FacePicker.hpp"
 #include "Selection/SelectionRenderer.hpp"
 
 #include <memory>
+#include <unordered_set>
 
 namespace MoldWing
 {
@@ -69,9 +71,19 @@ public:
     InteractionMode interactionMode() const { return m_interactionMode; }
     void setInteractionMode(InteractionMode mode);
 
+    // Brush selection settings
+    int brushRadius() const { return m_brushRadius; }
+    void setBrushRadius(int radius);
+
+    // Brush radius limits
+    static constexpr int MIN_BRUSH_RADIUS = 5;
+    static constexpr int MAX_BRUSH_RADIUS = 200;
+    static constexpr int DEFAULT_BRUSH_RADIUS = 30;
+
 signals:
     void initialized();
     void interactionModeChanged(InteractionMode mode);
+    void brushRadiusChanged(int radius);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -108,6 +120,12 @@ private:
     void beginBoxSelect(const QPoint& pos);
     void updateBoxSelect(const QPoint& pos);
     void endBoxSelect();
+
+    // Brush selection helpers
+    void beginBrushSelect(const QPoint& pos);
+    void updateBrushSelect(const QPoint& pos);
+    void endBrushSelect();
+
     SelectionOp getSelectionOp() const;
 
     // DiligentEngine objects
@@ -135,6 +153,13 @@ private:
     QPoint m_boxSelectStart;
     QPoint m_boxSelectCurrent;
     bool m_boxSelecting = false;
+
+    // Brush selection
+    BrushCursorRenderer m_brushCursorRenderer;
+    QPoint m_brushPosition;           // Current brush position
+    int m_brushRadius = DEFAULT_BRUSH_RADIUS;
+    bool m_brushSelecting = false;    // True when dragging with brush
+    std::unordered_set<uint32_t> m_brushSelectAccumulated;  // Accumulated selection during drag
 
     // Interaction mode
     InteractionMode m_interactionMode = InteractionMode::Camera;

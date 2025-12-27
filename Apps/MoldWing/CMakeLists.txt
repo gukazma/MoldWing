@@ -38,6 +38,7 @@ set(RENDER_SOURCES
     src/Render/MeshRenderer.cpp
     src/Render/PivotIndicator.cpp
     src/Render/SelectionBoxRenderer.cpp
+    src/Render/BrushCursorRenderer.cpp
 )
 
 set(RENDER_HEADERS
@@ -47,6 +48,7 @@ set(RENDER_HEADERS
     src/Render/MeshRenderer.hpp
     src/Render/PivotIndicator.hpp
     src/Render/SelectionBoxRenderer.hpp
+    src/Render/BrushCursorRenderer.hpp
 )
 
 set(CORE_SOURCES

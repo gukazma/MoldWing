@@ -16,6 +16,9 @@ class QDockWidget;
 class QUndoView;
 class QListWidget;
 class QLabel;
+class QSlider;
+class QSpinBox;
+class QGroupBox;
 
 namespace MoldWing
 {
@@ -43,6 +46,7 @@ private slots:
     void onDeselect();
     void onInvertSelection();
     void onSelectionChanged();
+    void onBrushRadiusChanged(int radius);
 
 private:
     void setupMenus();
@@ -68,6 +72,11 @@ private:
     // Dock widget content
     QListWidget* m_toolList = nullptr;
     QLabel* m_propertyLabel = nullptr;
+
+    // Brush settings widgets
+    QGroupBox* m_brushSettingsGroup = nullptr;
+    QSlider* m_brushRadiusSlider = nullptr;
+    QSpinBox* m_brushRadiusSpinBox = nullptr;
 
     // Menus
     QMenu* m_fileMenu = nullptr;

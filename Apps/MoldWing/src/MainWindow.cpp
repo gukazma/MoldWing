@@ -21,6 +21,10 @@
 #include <QListWidget>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
+#include <QSlider>
+#include <QSpinBox>
 #include <QApplication>
 
 namespace MoldWing
@@ -180,6 +184,53 @@ void MainWindow::setupDockWidgets()
     m_propertyLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_propertyLabel->setWordWrap(true);
     propertyLayout->addWidget(m_propertyLabel);
+
+    // -------------------------------------------------------------------------
+    // Brush Settings Group
+    // -------------------------------------------------------------------------
+    m_brushSettingsGroup = new QGroupBox(tr("Brush Settings"), propertyWidget);
+    QVBoxLayout* brushLayout = new QVBoxLayout(m_brushSettingsGroup);
+
+    // Brush radius row
+    QHBoxLayout* radiusRow = new QHBoxLayout();
+    QLabel* radiusLabel = new QLabel(tr("Size:"), m_brushSettingsGroup);
+    radiusRow->addWidget(radiusLabel);
+
+    m_brushRadiusSlider = new QSlider(Qt::Horizontal, m_brushSettingsGroup);
+    m_brushRadiusSlider->setRange(DiligentWidget::MIN_BRUSH_RADIUS, DiligentWidget::MAX_BRUSH_RADIUS);
+    m_brushRadiusSlider->setValue(DiligentWidget::DEFAULT_BRUSH_RADIUS);
+    radiusRow->addWidget(m_brushRadiusSlider, 1);
+
+    m_brushRadiusSpinBox = new QSpinBox(m_brushSettingsGroup);
+    m_brushRadiusSpinBox->setRange(DiligentWidget::MIN_BRUSH_RADIUS, DiligentWidget::MAX_BRUSH_RADIUS);
+    m_brushRadiusSpinBox->setValue(DiligentWidget::DEFAULT_BRUSH_RADIUS);
+    m_brushRadiusSpinBox->setSuffix(tr(" px"));
+    radiusRow->addWidget(m_brushRadiusSpinBox);
+
+    brushLayout->addLayout(radiusRow);
+    m_brushSettingsGroup->setLayout(brushLayout);
+
+    // Connect slider and spinbox bidirectionally
+    connect(m_brushRadiusSlider, &QSlider::valueChanged, m_brushRadiusSpinBox, &QSpinBox::setValue);
+    connect(m_brushRadiusSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), m_brushRadiusSlider, &QSlider::setValue);
+
+    // Connect to viewport brush radius
+    connect(m_brushRadiusSlider, &QSlider::valueChanged, this, &MainWindow::onBrushRadiusChanged);
+    connect(m_viewport3D, &DiligentWidget::brushRadiusChanged, this, [this](int radius) {
+        // Update UI when brush radius changes externally (e.g., via keyboard)
+        m_brushRadiusSlider->blockSignals(true);
+        m_brushRadiusSpinBox->blockSignals(true);
+        m_brushRadiusSlider->setValue(radius);
+        m_brushRadiusSpinBox->setValue(radius);
+        m_brushRadiusSlider->blockSignals(false);
+        m_brushRadiusSpinBox->blockSignals(false);
+    });
+
+    propertyLayout->addWidget(m_brushSettingsGroup);
+
+    // Initially hide brush settings (only show when brush mode is active)
+    m_brushSettingsGroup->setVisible(false);
+
     propertyLayout->addStretch();
 
     propertyWidget->setMinimumWidth(200);
@@ -345,11 +396,38 @@ void MainWindow::onToolSelected(int index)
 {
     LOG_DEBUG("工具选择: {}", index);
 
-    // First 4 items are selection tools (0-3)
+    // Show/hide brush settings based on tool
+    bool isBrushTool = (index == 1);
+    if (m_brushSettingsGroup)
+    {
+        m_brushSettingsGroup->setVisible(isBrushTool);
+    }
+
+    // Selection tools (0-3)
     if (index >= 0 && index <= 3)
     {
         m_viewport3D->setInteractionMode(DiligentWidget::InteractionMode::Selection);
-        statusBar()->showMessage(tr("Selection mode - drag to select faces"));
+
+        // Set the specific selection mode
+        switch (index)
+        {
+            case 0:  // Box Select
+                m_viewport3D->selectionSystem()->setMode(SelectionMode::Box);
+                statusBar()->showMessage(tr("Box selection mode - drag to select faces"));
+                break;
+            case 1:  // Brush Select
+                m_viewport3D->selectionSystem()->setMode(SelectionMode::Brush);
+                statusBar()->showMessage(tr("Brush selection mode - paint to select faces ([ ] to adjust size)"));
+                break;
+            case 2:  // Lasso Select
+                m_viewport3D->selectionSystem()->setMode(SelectionMode::Lasso);
+                statusBar()->showMessage(tr("Lasso selection mode (not yet implemented)"));
+                break;
+            case 3:  // Connected Select
+                m_viewport3D->selectionSystem()->setMode(SelectionMode::Link);
+                statusBar()->showMessage(tr("Connected selection mode (not yet implemented)"));
+                break;
+        }
     }
     else
     {
@@ -422,6 +500,14 @@ void MainWindow::onSelectionChanged()
             m_propertyLabel->setText(tr("Selected: %1 faces").arg(count));
         }
         statusBar()->showMessage(tr("%1 faces selected").arg(count));
+    }
+}
+
+void MainWindow::onBrushRadiusChanged(int radius)
+{
+    if (m_viewport3D)
+    {
+        m_viewport3D->setBrushRadius(radius);
     }
 }
 

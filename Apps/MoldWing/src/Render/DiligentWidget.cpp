@@ -216,6 +216,13 @@ void DiligentWidget::initializeDiligent()
         // Non-fatal
     }
 
+    // Initialize brush cursor renderer for brush selection
+    if (!m_brushCursorRenderer.initialize(m_pDevice, m_pSwapChain))
+    {
+        MW_LOG_ERROR("Failed to initialize brush cursor renderer!");
+        // Non-fatal
+    }
+
     // Set camera aspect ratio
     m_camera.setAspectRatio(static_cast<float>(width()) / static_cast<float>(height()));
 
@@ -335,6 +342,22 @@ void DiligentWidget::render()
         );
     }
 
+    // Render brush cursor when in brush selection mode
+    if (m_interactionMode == InteractionMode::Selection &&
+        m_selectionSystem->mode() == SelectionMode::Brush &&
+        m_brushCursorRenderer.isInitialized())
+    {
+        qreal dpr = devicePixelRatio();
+        m_brushCursorRenderer.render(
+            m_pContext,
+            static_cast<int>(m_brushPosition.x() * dpr),
+            static_cast<int>(m_brushPosition.y() * dpr),
+            static_cast<int>(m_brushRadius * dpr),
+            static_cast<int>(swapChainDesc.Width),
+            static_cast<int>(swapChainDesc.Height)
+        );
+    }
+
     // Present
     m_pSwapChain->Present();
 }
@@ -394,12 +417,19 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
     m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
     m_altHeld = event->modifiers() & Qt::AltModifier;
 
-    // Selection mode: LMB starts box selection
+    // Selection mode: LMB starts selection based on current selection mode
     if (m_interactionMode == InteractionMode::Selection)
     {
         if (event->button() == Qt::LeftButton)
         {
-            beginBoxSelect(event->pos());
+            if (m_selectionSystem->mode() == SelectionMode::Brush)
+            {
+                beginBrushSelect(event->pos());
+            }
+            else
+            {
+                beginBoxSelect(event->pos());
+            }
             return;
         }
     }
@@ -430,6 +460,13 @@ void DiligentWidget::mouseReleaseEvent(QMouseEvent* event)
         if (m_boxSelecting)
         {
             endBoxSelect();
+            return;
+        }
+
+        // Handle brush selection end
+        if (m_brushSelecting)
+        {
+            endBrushSelect();
             return;
         }
 
@@ -477,10 +514,24 @@ void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
     m_shiftHeld = event->modifiers() & Qt::ShiftModifier;
     m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
 
+    // Update brush position when in brush selection mode
+    if (m_interactionMode == InteractionMode::Selection &&
+        m_selectionSystem->mode() == SelectionMode::Brush)
+    {
+        m_brushPosition = event->pos();
+    }
+
     // Handle box selection drag
     if (m_boxSelecting)
     {
         updateBoxSelect(event->pos());
+        return;
+    }
+
+    // Handle brush selection drag
+    if (m_brushSelecting)
+    {
+        updateBrushSelect(event->pos());
         return;
     }
 
@@ -574,6 +625,21 @@ void DiligentWidget::keyPressEvent(QKeyEvent* event)
         // Period/Delete for focus (if we had selection)
         case Qt::Key_Period:
             // Future: focus on selection
+            break;
+
+        // Bracket keys for brush radius adjustment
+        case Qt::Key_BracketLeft:
+            if (m_selectionSystem->mode() == SelectionMode::Brush)
+            {
+                setBrushRadius(m_brushRadius - 5);
+            }
+            break;
+
+        case Qt::Key_BracketRight:
+            if (m_selectionSystem->mode() == SelectionMode::Brush)
+            {
+                setBrushRadius(m_brushRadius + 5);
+            }
             break;
 
         default:
@@ -833,6 +899,101 @@ SelectionOp DiligentWidget::getSelectionOp() const
         return SelectionOp::Subtract;
     else
         return SelectionOp::Replace;
+}
+
+// Brush selection methods
+
+void DiligentWidget::setBrushRadius(int radius)
+{
+    int newRadius = std::max(MIN_BRUSH_RADIUS, std::min(radius, MAX_BRUSH_RADIUS));
+    if (newRadius != m_brushRadius)
+    {
+        m_brushRadius = newRadius;
+        emit brushRadiusChanged(m_brushRadius);
+        LOG_DEBUG("Brush radius changed to {}", m_brushRadius);
+    }
+}
+
+void DiligentWidget::beginBrushSelect(const QPoint& pos)
+{
+    m_brushSelecting = true;
+    m_brushPosition = pos;
+    m_brushSelectAccumulated.clear();
+
+    // If not additive/subtractive mode, clear existing selection
+    SelectionOp op = getSelectionOp();
+    if (op == SelectionOp::Replace)
+    {
+        m_selectionSystem->clearSelection();
+    }
+
+    // Perform initial brush selection
+    updateBrushSelect(pos);
+}
+
+void DiligentWidget::updateBrushSelect(const QPoint& pos)
+{
+    m_brushPosition = pos;
+
+    if (!m_facePicker.isInitialized() || !m_facePicker.hasMesh())
+        return;
+
+    // Render ID buffer
+    m_facePicker.renderIDBuffer(m_pContext, m_camera);
+
+    // Read face IDs in brush circle (account for DPI scaling)
+    qreal dpr = devicePixelRatio();
+    int cx = static_cast<int>(pos.x() * dpr);
+    int cy = static_cast<int>(pos.y() * dpr);
+    int r = static_cast<int>(m_brushRadius * dpr);
+
+    std::vector<uint32_t> faceIDs = m_facePicker.readFaceIDsInCircle(m_pContext, cx, cy, r);
+
+    if (!faceIDs.empty())
+    {
+        SelectionOp op = getSelectionOp();
+
+        // Accumulate selected faces during drag
+        for (uint32_t faceID : faceIDs)
+        {
+            m_brushSelectAccumulated.insert(faceID);
+        }
+
+        // Apply selection immediately for visual feedback
+        switch (op)
+        {
+            case SelectionOp::Replace:
+            case SelectionOp::Add:
+                m_selectionSystem->select(faceIDs, SelectionOp::Add);
+                break;
+            case SelectionOp::Subtract:
+                m_selectionSystem->select(faceIDs, SelectionOp::Subtract);
+                break;
+            case SelectionOp::Toggle:
+                // For toggle, we accumulate but don't toggle repeatedly
+                // Just add during drag, toggle will be applied at end
+                m_selectionSystem->select(faceIDs, SelectionOp::Add);
+                break;
+        }
+    }
+}
+
+void DiligentWidget::endBrushSelect()
+{
+    m_brushSelecting = false;
+
+    // Create undo command for the entire brush stroke if we accumulated faces
+    if (!m_brushSelectAccumulated.empty() && m_undoStack)
+    {
+        // Note: The selection has already been applied, so we just need to
+        // ensure the undo stack reflects the change.
+        // We'll push a command with the final selection state.
+        auto finalSelection = m_selectionSystem->selectedFaces();
+        m_undoStack->push(new SelectFacesCommand(m_selectionSystem, finalSelection));
+    }
+
+    m_brushSelectAccumulated.clear();
+    LOG_DEBUG("Brush select ended");
 }
 
 } // namespace MoldWing

@@ -544,4 +544,112 @@ std::vector<uint32_t> FacePicker::readFaceIDsInRect(IDeviceContext* pContext,
     return result;
 }
 
+std::vector<uint32_t> FacePicker::readFaceIDsInCircle(IDeviceContext* pContext,
+                                                       int centerX, int centerY, int radius)
+{
+    std::vector<uint32_t> result;
+
+    if (!m_initialized || !m_pIDTexture || !m_pStagingTexture)
+        return result;
+
+    if (radius <= 0)
+        return result;
+
+    // Calculate bounding rectangle for the circle
+    int x1 = centerX - radius;
+    int y1 = centerY - radius;
+    int x2 = centerX + radius;
+    int y2 = centerY + radius;
+
+    // Clamp to texture bounds
+    x1 = std::max(0, std::min(x1, static_cast<int>(m_width) - 1));
+    x2 = std::max(0, std::min(x2, static_cast<int>(m_width)));
+    y1 = std::max(0, std::min(y1, static_cast<int>(m_height) - 1));
+    y2 = std::max(0, std::min(y2, static_cast<int>(m_height)));
+
+    int rectWidth = x2 - x1;
+    int rectHeight = y2 - y1;
+
+    if (rectWidth <= 0 || rectHeight <= 0)
+        return result;
+
+    // Copy region from ID texture to staging
+    CopyTextureAttribs copyAttribs;
+    copyAttribs.pSrcTexture = m_pIDTexture;
+    copyAttribs.SrcMipLevel = 0;
+    copyAttribs.SrcSlice = 0;
+    copyAttribs.pDstTexture = m_pStagingTexture;
+    copyAttribs.DstMipLevel = 0;
+    copyAttribs.DstSlice = 0;
+    copyAttribs.DstX = 0;
+    copyAttribs.DstY = 0;
+    copyAttribs.DstZ = 0;
+
+    Box srcBox;
+    srcBox.MinX = x1;
+    srcBox.MaxX = x2;
+    srcBox.MinY = y1;
+    srcBox.MaxY = y2;
+    srcBox.MinZ = 0;
+    srcBox.MaxZ = 1;
+    copyAttribs.pSrcBox = &srcBox;
+
+    pContext->CopyTexture(copyAttribs);
+
+    // Wait for GPU
+    pContext->WaitForIdle();
+
+    // Map and read
+    MappedTextureSubresource mappedData;
+    Box mapBox;
+    mapBox.MinX = 0;
+    mapBox.MaxX = rectWidth;
+    mapBox.MinY = 0;
+    mapBox.MaxY = rectHeight;
+    mapBox.MinZ = 0;
+    mapBox.MaxZ = 1;
+
+    pContext->MapTextureSubresource(m_pStagingTexture, 0, 0, MAP_READ, MAP_FLAG_DO_NOT_WAIT,
+                                     &mapBox, mappedData);
+
+    if (mappedData.pData)
+    {
+        std::unordered_set<uint32_t> uniqueFaces;
+        const uint8_t* pRow = static_cast<const uint8_t*>(mappedData.pData);
+
+        int radiusSquared = radius * radius;
+
+        for (int row = 0; row < rectHeight; ++row)
+        {
+            const uint32_t* pPixels = reinterpret_cast<const uint32_t*>(pRow);
+
+            // Calculate Y position relative to circle center
+            int dy = (y1 + row) - centerY;
+
+            for (int col = 0; col < rectWidth; ++col)
+            {
+                // Calculate X position relative to circle center
+                int dx = (x1 + col) - centerX;
+
+                // Check if pixel is within circle
+                if (dx * dx + dy * dy <= radiusSquared)
+                {
+                    uint32_t faceID = pPixels[col];
+                    if (faceID != INVALID_FACE_ID)
+                    {
+                        uniqueFaces.insert(faceID);
+                    }
+                }
+            }
+            pRow += mappedData.Stride;
+        }
+
+        result.assign(uniqueFaces.begin(), uniqueFaces.end());
+    }
+
+    pContext->UnmapTextureSubresource(m_pStagingTexture, 0, 0);
+
+    return result;
+}
+
 } // namespace MoldWing
