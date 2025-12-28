@@ -11,7 +11,7 @@
     {
       "name": "qtbase",
       "default-features": false,
-      "features": ["widgets", "gui", "opengl"]
+      "features": ["widgets", "gui", "opengl", "jpeg", "png"]
     }
   ],
   "builtin-baseline": "80d54ff62d528339c626a6fbc3489a7f25956ade"

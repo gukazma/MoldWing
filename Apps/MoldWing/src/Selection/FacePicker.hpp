@@ -1,6 +1,7 @@
 /*
  *  MoldWing - Face Picker (GPU Picking System)
  *  S2.1: GPU-based face ID picking for selection
+ *  T6.2.1: Extended for texture editing (pickPoint with depth)
  */
 
 #pragma once
@@ -22,6 +23,16 @@
 
 namespace MoldWing
 {
+
+/**
+ * @brief Result of a single point pick operation (T6.2.1)
+ */
+struct PickResult
+{
+    uint32_t faceId = 0xFFFFFFFF;  // Face ID (INVALID_FACE_ID if no hit)
+    float depth = 1.0f;            // Normalized depth (0=near, 1=far)
+    bool hit = false;              // True if a face was hit
+};
 
 /**
  * @brief GPU-based face picking system
@@ -79,6 +90,15 @@ public:
     uint32_t readFaceID(Diligent::IDeviceContext* pContext, int x, int y);
 
     /**
+     * @brief Pick a single point and return face ID with depth (T6.2.1)
+     * @param pContext Device context
+     * @param x Screen X coordinate (pixels)
+     * @param y Screen Y coordinate (pixels)
+     * @return PickResult with faceId, depth, and hit flag
+     */
+    PickResult pickPoint(Diligent::IDeviceContext* pContext, int x, int y);
+
+    /**
      * @brief Read all face IDs within a screen rectangle
      * @param pContext Device context
      * @param x1 Left coordinate
@@ -130,8 +150,9 @@ private:
     Diligent::RefCntAutoPtr<Diligent::ITexture> m_pDepthTexture;        // Depth buffer
     Diligent::RefCntAutoPtr<Diligent::ITextureView> m_pDepthDSV;        // Depth stencil view
 
-    // Staging texture for CPU readback
-    Diligent::RefCntAutoPtr<Diligent::ITexture> m_pStagingTexture;
+    // Staging textures for CPU readback
+    Diligent::RefCntAutoPtr<Diligent::ITexture> m_pStagingTexture;      // For face ID readback
+    Diligent::RefCntAutoPtr<Diligent::ITexture> m_pDepthStagingTexture; // For depth readback (T6.2.1)
 
     // Buffers
     Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pVertexBuffer;

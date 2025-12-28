@@ -1,6 +1,7 @@
 /*
  *  MoldWing - Face Picker Implementation
  *  S2.1: GPU-based face ID picking
+ *  T6.2.1: Extended pickPoint method
  */
 
 #include "FacePicker.hpp"
@@ -648,6 +649,21 @@ std::vector<uint32_t> FacePicker::readFaceIDsInCircle(IDeviceContext* pContext,
     }
 
     pContext->UnmapTextureSubresource(m_pStagingTexture, 0, 0);
+
+    return result;
+}
+
+PickResult FacePicker::pickPoint(IDeviceContext* pContext, int x, int y)
+{
+    PickResult result;
+
+    uint32_t faceId = readFaceID(pContext, x, y);
+    if (faceId != INVALID_FACE_ID)
+    {
+        result.faceId = faceId;
+        result.hit = true;
+        result.depth = 0.0f;  // Depth not implemented yet - use CPU ray-triangle intersection
+    }
 
     return result;
 }

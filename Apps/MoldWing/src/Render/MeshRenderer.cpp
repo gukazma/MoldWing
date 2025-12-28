@@ -1,9 +1,11 @@
 /*
  *  MoldWing - Mesh Renderer Implementation
  *  S1.5: Render mesh with DiligentEngine
+ *  T6.1.5-7: Extended for texture rendering
  */
 
 #include "MeshRenderer.hpp"
+#include "Core/Logger.hpp"
 
 #include <Common/interface/BasicMath.hpp>
 #include <Graphics/GraphicsTools/interface/MapHelper.hpp>
@@ -17,7 +19,7 @@ namespace MoldWing
 
 namespace
 {
-    // Vertex shader HLSL
+    // Vertex shader HLSL (T6.1.6: unchanged from before)
     const char* VSSource = R"(
 cbuffer Constants
 {
@@ -25,6 +27,7 @@ cbuffer Constants
     row_major float4x4 g_World;
     float4   g_LightDir;
     float4   g_CameraPos;
+    float4   g_Flags;  // x = hasTexture
 };
 
 struct VSInput
@@ -51,7 +54,7 @@ void main(in VSInput VSIn, out PSInput PSIn)
 }
 )";
 
-    // Pixel shader HLSL (Blinn-Phong lighting)
+    // Pixel shader HLSL (T6.1.6: extended for texture sampling)
     const char* PSSource = R"(
 cbuffer Constants
 {
@@ -59,7 +62,11 @@ cbuffer Constants
     row_major float4x4 g_World;
     float4   g_LightDir;
     float4   g_CameraPos;
+    float4   g_Flags;  // x = hasTexture
 };
+
+Texture2D    g_Texture;
+SamplerState g_Texture_sampler;
 
 struct PSInput
 {
@@ -82,8 +89,16 @@ float4 main(in PSInput PSIn) : SV_Target
     float diffuse = max(dot(N, L), 0.0) * 0.7;
     float specular = pow(max(dot(N, H), 0.0), 32.0) * 0.3;
 
-    // Base color (gray for now, will use texture later)
-    float3 baseColor = float3(0.7, 0.7, 0.7);
+    // Base color: from texture or default gray
+    float3 baseColor;
+    if (g_Flags.x > 0.5)
+    {
+        baseColor = g_Texture.Sample(g_Texture_sampler, PSIn.TexCoord).rgb;
+    }
+    else
+    {
+        baseColor = float3(0.7, 0.7, 0.7);
+    }
 
     // Combine lighting
     float3 color = baseColor * (ambient + diffuse) + float3(1, 1, 1) * specular;
@@ -99,6 +114,7 @@ float4 main(in PSInput PSIn) : SV_Target
         float World[16];
         float LightDir[4];
         float CameraPos[4];
+        float Flags[4];  // x = hasTexture
     };
 
     // Matrix multiplication helper
@@ -199,14 +215,31 @@ bool MeshRenderer::createPipeline(IRenderDevice* pDevice, ISwapChain* pSwapChain
     psoCI.pVS = pVS;
     psoCI.pPS = pPS;
 
-    // Shader resource variables
+    // Shader resource variables (T6.1.7: add texture variable)
     ShaderResourceVariableDesc varDesc[] =
     {
         {SHADER_TYPE_VERTEX, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
-        {SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC}
+        {SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE}
     };
     psoCI.PSODesc.ResourceLayout.Variables = varDesc;
     psoCI.PSODesc.ResourceLayout.NumVariables = _countof(varDesc);
+
+    // Immutable samplers (T6.1.5)
+    SamplerDesc samplerDesc;
+    samplerDesc.MinFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.MagFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.MipFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.AddressU = TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressV = TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressW = TEXTURE_ADDRESS_WRAP;
+
+    ImmutableSamplerDesc immutableSamplers[] =
+    {
+        {SHADER_TYPE_PIXEL, "g_Texture", samplerDesc}
+    };
+    psoCI.PSODesc.ResourceLayout.ImmutableSamplers = immutableSamplers;
+    psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(immutableSamplers);
 
     pDevice->CreateGraphicsPipelineState(psoCI, &m_pPSO);
     if (!m_pPSO)
@@ -233,10 +266,61 @@ bool MeshRenderer::createPipeline(IRenderDevice* pDevice, ISwapChain* pSwapChain
     return true;
 }
 
+bool MeshRenderer::createGPUTexture(const TextureData& texData, int index)
+{
+    if (!texData.isValid() || !m_pDevice)
+        return false;
+
+    TextureDesc texDesc;
+    texDesc.Name = "Diffuse Texture";
+    texDesc.Type = RESOURCE_DIM_TEX_2D;
+    texDesc.Width = static_cast<Uint32>(texData.width());
+    texDesc.Height = static_cast<Uint32>(texData.height());
+    texDesc.Format = TEX_FORMAT_RGBA8_UNORM;
+    texDesc.MipLevels = 1;
+    texDesc.Usage = USAGE_DEFAULT;
+    texDesc.BindFlags = BIND_SHADER_RESOURCE;
+
+    TextureSubResData subResData;
+    subResData.pData = texData.data();
+    subResData.Stride = static_cast<Uint64>(texData.bytesPerLine());
+
+    Diligent::TextureData texDataInit;
+    texDataInit.pSubResources = &subResData;
+    texDataInit.NumSubresources = 1;
+
+    RefCntAutoPtr<ITexture> pTexture;
+    m_pDevice->CreateTexture(texDesc, &texDataInit, &pTexture);
+    if (!pTexture)
+    {
+        MW_LOG_ERROR("Failed to create GPU texture");
+        return false;
+    }
+
+    // Ensure we have space in the vectors
+    if (index >= static_cast<int>(m_textures.size()))
+    {
+        m_textures.resize(index + 1);
+        m_textureSRVs.resize(index + 1);
+    }
+
+    m_textures[index] = pTexture;
+    m_textureSRVs[index] = pTexture->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
+
+    MW_LOG_INFO("Created GPU texture {} ({}x{})", index, texData.width(), texData.height());
+
+    return true;
+}
+
 bool MeshRenderer::loadMesh(const MeshData& mesh)
 {
     if (!m_pDevice || mesh.vertices.empty())
         return false;
+
+    // Clear previous textures
+    m_textures.clear();
+    m_textureSRVs.clear();
+    m_hasTextures = false;
 
     // Create vertex buffer
     BufferDesc vbDesc;
@@ -268,11 +352,67 @@ bool MeshRenderer::loadMesh(const MeshData& mesh)
     if (!m_pIndexBuffer)
         return false;
 
+    // Load textures (T6.1.5)
+    for (size_t i = 0; i < mesh.textures.size(); ++i)
+    {
+        if (mesh.textures[i] && mesh.textures[i]->isValid())
+        {
+            if (createGPUTexture(*mesh.textures[i], static_cast<int>(i)))
+            {
+                m_hasTextures = true;
+            }
+        }
+    }
+
+    // Bind first texture to SRB if available
+    if (m_hasTextures && !m_textureSRVs.empty() && m_textureSRVs[0])
+    {
+        auto* pVar = m_pSRB->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+        if (pVar)
+        {
+            pVar->Set(m_textureSRVs[0]);
+        }
+    }
+
     m_vertexCount = static_cast<Uint32>(mesh.vertices.size());
     m_indexCount = static_cast<Uint32>(mesh.indices.size());
     m_bounds = mesh.bounds;
 
     return true;
+}
+
+void MeshRenderer::updateTexture(IDeviceContext* pContext, int textureIndex, const TextureData& texData)
+{
+    if (textureIndex < 0 || textureIndex >= static_cast<int>(m_textures.size()))
+        return;
+
+    auto& pTexture = m_textures[textureIndex];
+    if (!pTexture || !texData.isValid())
+        return;
+
+    // Check dimensions match
+    const auto& texDesc = pTexture->GetDesc();
+    if (texDesc.Width != static_cast<Uint32>(texData.width()) ||
+        texDesc.Height != static_cast<Uint32>(texData.height()))
+    {
+        MW_LOG_ERROR("Texture dimensions mismatch during update");
+        return;
+    }
+
+    // Update texture data
+    Box updateBox;
+    updateBox.MinX = 0;
+    updateBox.MinY = 0;
+    updateBox.MaxX = texDesc.Width;
+    updateBox.MaxY = texDesc.Height;
+
+    TextureSubResData subResData;
+    subResData.pData = texData.data();
+    subResData.Stride = static_cast<Uint64>(texData.bytesPerLine());
+
+    pContext->UpdateTexture(pTexture, 0, 0, updateBox, subResData,
+                            RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                            RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }
 
 void MeshRenderer::render(IDeviceContext* pContext, const OrbitCamera& camera)
@@ -310,6 +450,12 @@ void MeshRenderer::render(IDeviceContext* pContext, const OrbitCamera& camera)
         cb->CameraPos[1] = camY;
         cb->CameraPos[2] = camZ;
         cb->CameraPos[3] = 1.0f;
+
+        // Flags (T6.1.7: hasTexture flag)
+        cb->Flags[0] = m_hasTextures ? 1.0f : 0.0f;
+        cb->Flags[1] = 0.0f;
+        cb->Flags[2] = 0.0f;
+        cb->Flags[3] = 0.0f;
     }
 
     // Set pipeline state

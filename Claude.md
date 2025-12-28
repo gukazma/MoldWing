@@ -74,7 +74,7 @@ MoldWing/
     "eigen3",
     "stb",
     "spdlog",
-    { "name": "qtbase", "features": ["widgets", "gui", "opengl"] }
+    { "name": "qtbase", "features": ["widgets", "gui", "opengl", "jpeg", "png"] }
   ]
 }
 ```
@@ -88,7 +88,7 @@ MoldWing/
 | M3 | 刷选 | ✅ 100% |
 | M4 | 套索选择 | ✅ 100% |
 | M5 | 连通选择 | ✅ 100% |
-| M6 | 纹理渲染 + 编辑模式框架 | ⏳ 待开始 |
+| M6 | 纹理渲染 + 编辑模式框架 | ✅ 100% |
 | M7 | 克隆图章工具 | ⏳ 待开始 |
 | M8 | 橡皮擦工具 | ⏳ 待开始 |
 | M9 | 颜色调整 | ⏳ 待开始 |
@@ -149,27 +149,27 @@ MoldWing/
 - ✅ 属性面板角度阈值滑块（QSlider + QDoubleSpinBox）
 - ✅ 菜单快捷键（Ctrl++ 扩展选择, Ctrl+- 收缩选择）
 
-### M6 待实现：纹理渲染 + 编辑模式框架
+### M6 已完成模块：纹理渲染 + 编辑模式框架
 
 **M6.1 纹理渲染基础**
-- Material 数据结构（漫反射纹理路径、纹理ID）
-- TextureLoader（stb_image 加载 PNG/JPG/TGA）
-- MeshData 扩展（材质列表、面-材质映射）
-- MeshLoader 扩展（读取 MTL 材质文件）
-- MeshRenderer 改造（GPU 纹理 + 采样器 + 着色器采样）
+- ✅ Material 数据结构（漫反射纹理路径、纹理ID）
+- ✅ TextureData（QImage 加载 PNG/JPG/TGA）
+- ✅ MeshData 扩展（材质列表、面-材质映射）
+- ✅ MeshLoader 扩展（读取 MTL 材质文件）
+- ✅ MeshRenderer 改造（GPU 纹理 + 采样器 + 着色器采样）
+- ✅ Qt JPEG/PNG 插件部署（qjpeg + libjpeg-turbo）
 
 **M6.2 屏幕-纹理映射系统**
-- FacePicker 扩展（单点拾取 pickPoint）
-- BarycentricCalculator（屏幕坐标→重心坐标）
-- UVInterpolator（重心坐标→精确UV）
-- ScreenToTextureMapper（可见面映射表缓存）
+- ✅ FacePicker 扩展（单点拾取 pickPoint + 三角形数据获取）
+- ✅ ScreenToTextureMapper（Moller-Trumbore 射线-三角形求交）
+- ✅ 重心坐标插值 UV（barycentric → texture coordinates）
 
 **M6.3 编辑模式框架**
-- TextureEditMode（进入/退出、视角锁定、状态栏提示）
-- TextureEditBuffer（CPU 纹理副本、脏区域跟踪、GPU 同步）
-- ScreenCapture（工具激活时截取屏幕）
-- TextureEditCommand（QUndoCommand，每笔撤销）
-- 手动保存功能（saveTexture 写入文件）
+- ✅ TextureEditMode（进入/退出、视角锁定、状态栏提示）
+- ✅ TextureEditBuffer（CPU 纹理副本、脏区域跟踪、GPU 同步）
+- ✅ TextureEditCommand（QUndoCommand，矩形区域撤销）
+- ✅ TextureEditTool（工具基类：笔刷大小、硬度、鼠标事件）
+- ✅ 手动保存功能（saveTexture 写入 PNG/JPG/BMP/TGA）
 
 ### M7 待实现：克隆图章工具
 
@@ -275,5 +275,5 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 
 ---
 
-**最后更新**: 2025-12-27
-**项目版本**: 0.1-dev (Qt 方案) - M5 连通选择完成，M6-M8 纹理编辑方案重新定义
+**最后更新**: 2025-12-28
+**项目版本**: 0.1-dev (Qt 方案) - M6 纹理渲染+编辑框架完成，下一步 M7 克隆图章

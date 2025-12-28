@@ -11,6 +11,10 @@
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
+
+#include "Material.hpp"
+#include "TextureData.hpp"
 
 namespace MoldWing
 {
@@ -79,6 +83,11 @@ struct MeshData
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;  // Triangle indices (3 per face)
 
+    // Material and texture data (M6)
+    std::vector<Material> materials;                         // Material list
+    std::vector<std::shared_ptr<TextureData>> textures;      // Loaded textures
+    std::vector<uint32_t> faceMaterialIds;                   // Material ID per face
+
     // Computed data
     BoundingBox bounds;
 
@@ -110,8 +119,28 @@ struct MeshData
     {
         vertices.clear();
         indices.clear();
+        materials.clear();
+        textures.clear();
+        faceMaterialIds.clear();
         faceAdjacency.clear();
         faceNormals.clear();
+    }
+
+    // Check if mesh has textures
+    bool hasTextures() const { return !textures.empty(); }
+
+    // Get material for a face
+    const Material* getFaceMaterial(uint32_t faceId) const
+    {
+        if (faceId < faceMaterialIds.size())
+        {
+            uint32_t matId = faceMaterialIds[faceId];
+            if (matId < materials.size())
+            {
+                return &materials[matId];
+            }
+        }
+        return nullptr;
     }
 };
 

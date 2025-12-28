@@ -61,6 +61,7 @@ set(CORE_SOURCES
 set(CORE_HEADERS
     src/Core/MeshData.hpp
     src/Core/TextureData.hpp
+    src/Core/Material.hpp
     src/Core/Logger.hpp
     src/Core/RayIntersection.hpp
 )
@@ -89,6 +90,22 @@ set(SELECTION_HEADERS
     src/Selection/SelectionRenderer.hpp
 )
 
+set(TEXTURE_SOURCES
+    src/Texture/ScreenToTextureMapper.cpp
+    src/Texture/TextureEditMode.cpp
+    src/Texture/TextureEditBuffer.cpp
+    src/Texture/TextureEditCommand.cpp
+    src/Texture/TextureEditTool.cpp
+)
+
+set(TEXTURE_HEADERS
+    src/Texture/ScreenToTextureMapper.hpp
+    src/Texture/TextureEditMode.hpp
+    src/Texture/TextureEditBuffer.hpp
+    src/Texture/TextureEditCommand.hpp
+    src/Texture/TextureEditTool.hpp
+)
+
 # Combine all sources
 set(ALL_SOURCES
     ${MAIN_SOURCES}
@@ -96,6 +113,7 @@ set(ALL_SOURCES
     ${CORE_SOURCES}
     ${IO_SOURCES}
     ${SELECTION_SOURCES}
+    ${TEXTURE_SOURCES}
 )
 
 set(ALL_HEADERS
@@ -105,6 +123,7 @@ set(ALL_HEADERS
     ${IO_HEADERS}
     ${COMMANDS_HEADERS}
     ${SELECTION_HEADERS}
+    ${TEXTURE_HEADERS}
 )
 
 # =============================================================================
@@ -288,8 +307,17 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${VCPKG_PLUGINS_DIR}/imageformats/qgif$<$<CONFIG:Debug>:d>.dll"
             "${VCPKG_PLUGINS_DIR}/imageformats/qico$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_PLUGINS_DIR}/imageformats/qjpeg$<$<CONFIG:Debug>:d>.dll"
             "$<TARGET_FILE_DIR:MoldWing>/imageformats/"
         COMMENT "Copying Qt imageformats plugins..."
+    )
+
+    # Copy libjpeg-turbo DLL for JPEG support
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_BIN_DIR}/jpeg62.dll"
+            "$<TARGET_FILE_DIR:MoldWing>"
+        COMMENT "Copying libjpeg DLL..."
     )
 endif()
 
@@ -304,3 +332,4 @@ source_group("src/Core" FILES ${CORE_SOURCES} ${CORE_HEADERS})
 source_group("src/IO" FILES ${IO_SOURCES} ${IO_HEADERS})
 source_group("src/Commands" FILES ${COMMANDS_HEADERS})
 source_group("src/Selection" FILES ${SELECTION_SOURCES} ${SELECTION_HEADERS})
+source_group("src/Texture" FILES ${TEXTURE_SOURCES} ${TEXTURE_HEADERS})
