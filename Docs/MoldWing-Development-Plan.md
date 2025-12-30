@@ -58,9 +58,10 @@
     "cgal",
     "eigen3",
     "stb",
+    "spdlog",
     {
       "name": "qtbase",
-      "features": ["widgets", "gui", "opengl"]
+      "features": ["widgets", "gui", "opengl", "jpeg", "png", "concurrent"]
     }
   ]
 }
@@ -569,7 +570,7 @@ Apps/MoldWing/
 ### CMake 配置
 
 ```cmake
-find_package(Qt6 REQUIRED COMPONENTS Widgets Gui OpenGL)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Gui OpenGL Concurrent)
 
 add_executable(MoldWing
     src/main.cpp
@@ -581,6 +582,7 @@ target_link_libraries(MoldWing PRIVATE
     Qt6::Widgets
     Qt6::Gui
     Qt6::OpenGL
+    Qt6::Concurrent
     Diligent-GraphicsEngine
     # ... 其他库
 )
@@ -633,5 +635,5 @@ connect(m_undoStack, &QUndoStack::canUndoChanged,
 
 ---
 
-**文档版本**: 3.0 (Qt 方案 - M8 图层树与多模型管理)
+**文档版本**: 3.1 (Qt 方案 - M8 图层树与多模型管理 + 异步加载)
 **最后更新**: 2025-12-30
