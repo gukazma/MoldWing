@@ -8,7 +8,9 @@
 #include "Core/MeshData.hpp"
 #include "Core/Logger.hpp"
 #include "IO/MeshLoader.hpp"
+#include "IO/MeshExporter.hpp"
 #include "Selection/SelectionSystem.hpp"
+#include "Texture/TextureEditBuffer.hpp"
 
 #include <QMenuBar>
 #include <QToolBar>
@@ -85,6 +87,12 @@ void MainWindow::setupMenus()
     m_saveAction->setShortcut(QKeySequence::Save);
     connect(m_saveAction, &QAction::triggered, this, &MainWindow::onSaveFile);
     m_saveAction->setEnabled(false);
+
+    // M7.5: Export As action
+    m_exportAction = m_fileMenu->addAction(tr("Export &As..."));
+    m_exportAction->setShortcut(QKeySequence(tr("Ctrl+Shift+S")));
+    connect(m_exportAction, &QAction::triggered, this, &MainWindow::onExportFile);
+    m_exportAction->setEnabled(false);
 
     m_fileMenu->addSeparator();
 
@@ -471,8 +479,9 @@ void MainWindow::onOpenFile()
         .arg(m_currentMesh->vertexCount())
         .arg(m_currentMesh->faceCount()));
 
-    // Enable save action
+    // Enable save and export actions
     m_saveAction->setEnabled(true);
+    m_exportAction->setEnabled(true);
 
     // Clear undo stack for new file
     m_undoStack->clear();
@@ -499,9 +508,72 @@ void MainWindow::onSaveFile()
 
     LOG_INFO("保存文件: {}", filePath.toStdString());
 
-    // TODO: Implement mesh saving
-    QMessageBox::information(this, tr("Info"),
-        tr("Save functionality will be implemented in a future update."));
+    // M7.5: Use MeshExporter to save with edited textures
+    MeshExporter exporter;
+
+    // Build edit buffer map (texture ID -> edit buffer)
+    std::unordered_map<int, std::shared_ptr<TextureEditBuffer>> editBuffers;
+    if (m_viewport3D && m_viewport3D->editBuffer() && m_viewport3D->editBuffer()->isValid())
+    {
+        // Currently we only support single texture editing
+        // The first texture (index 0) is the one being edited
+        auto buffer = std::make_shared<TextureEditBuffer>();
+        *buffer = *m_viewport3D->editBuffer();  // Copy the edit buffer
+        editBuffers[0] = buffer;
+    }
+
+    if (exporter.exportOBJ(filePath, *m_currentMesh, editBuffers))
+    {
+        statusBar()->showMessage(tr("Saved: %1").arg(filePath), 5000);
+    }
+    else
+    {
+        QMessageBox::critical(this, tr("Error"),
+            tr("Failed to save file:\n%1").arg(exporter.lastError()));
+    }
+}
+
+void MainWindow::onExportFile()
+{
+    if (!m_currentMesh)
+        return;
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Export 3D Model"),
+        QString(),
+        tr("OBJ Files (*.obj);;All Files (*)")
+    );
+
+    if (filePath.isEmpty())
+        return;
+
+    LOG_INFO("导出文件: {}", filePath.toStdString());
+
+    // M7.5: Use MeshExporter to export with edited textures
+    MeshExporter exporter;
+
+    // Build edit buffer map (texture ID -> edit buffer)
+    std::unordered_map<int, std::shared_ptr<TextureEditBuffer>> editBuffers;
+    if (m_viewport3D && m_viewport3D->editBuffer() && m_viewport3D->editBuffer()->isValid())
+    {
+        // Currently we only support single texture editing
+        auto buffer = std::make_shared<TextureEditBuffer>();
+        *buffer = *m_viewport3D->editBuffer();  // Copy the edit buffer
+        editBuffers[0] = buffer;
+    }
+
+    if (exporter.exportOBJ(filePath, *m_currentMesh, editBuffers))
+    {
+        statusBar()->showMessage(tr("Exported: %1").arg(filePath), 5000);
+        QMessageBox::information(this, tr("Export Complete"),
+            tr("Model exported successfully to:\n%1").arg(filePath));
+    }
+    else
+    {
+        QMessageBox::critical(this, tr("Error"),
+            tr("Failed to export file:\n%1").arg(exporter.lastError()));
+    }
 }
 
 void MainWindow::onResetView()

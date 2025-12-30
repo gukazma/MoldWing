@@ -68,10 +68,12 @@ set(CORE_HEADERS
 
 set(IO_SOURCES
     src/IO/MeshLoader.cpp
+    src/IO/MeshExporter.cpp
 )
 
 set(IO_HEADERS
     src/IO/MeshLoader.hpp
+    src/IO/MeshExporter.hpp
 )
 
 set(COMMANDS_HEADERS

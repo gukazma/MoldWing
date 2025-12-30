@@ -41,6 +41,7 @@ public:
 private slots:
     void onOpenFile();
     void onSaveFile();
+    void onExportFile();  // M7.5: Export OBJ with textures
     void onResetView();
     void onToolSelected(int index);
     void onSelectAll();
@@ -106,6 +107,7 @@ private:
     // Actions
     QAction* m_openAction = nullptr;
     QAction* m_saveAction = nullptr;
+    QAction* m_exportAction = nullptr;  // M7.5: Export OBJ with textures
     QAction* m_exitAction = nullptr;
     QAction* m_undoAction = nullptr;
     QAction* m_redoAction = nullptr;

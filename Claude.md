@@ -90,10 +90,11 @@ MoldWing/
 | M5 | 连通选择 | ✅ 100% |
 | M6 | 纹理渲染 + 编辑模式框架 | ✅ 100% |
 | M7 | 克隆图章工具 | ✅ 100% |
+| M7.5 | OBJ 带纹理导出 | ✅ 100% |
 | M8 | 橡皮擦工具 | ⏳ 待开始 |
 | M9 | 颜色调整 | ⏳ 待开始 |
 | M10 | 几何修复（孔洞/非流形） | ⏳ 待开始 |
-| M11 | 导入导出（OBJ/OSGB） | ⏳ 待开始 |
+| M11 | 导入导出（OSGB） | ⏳ 待开始 |
 
 ### 纹理编辑方案说明
 
@@ -213,6 +214,18 @@ MoldWing/
 - ✅ 状态栏编辑模式提示
 - ✅ saveTexture() 保存到 PNG/JPG/BMP/TGA
 
+### M7.5 已完成：OBJ 带纹理导出
+
+**功能目标**：将编辑后的模型和纹理导出为新的 OBJ 文件
+
+- ✅ MeshExporter 类（IO/MeshExporter.hpp/cpp）
+- ✅ OBJ 文件写入（顶点/法向量/UV/面索引）
+- ✅ MTL 材质文件生成
+- ✅ 编辑后纹理导出（保持原格式 PNG/JPG/TGA）
+- ✅ File → Export As... 菜单（Ctrl+Shift+S）
+- ✅ 纹理与 OBJ 同目录，MTL 使用相对路径
+- ✅ UV 坐标翻转修复（导入时 assimp FlipUVs，导出时翻回）
+
 ### M8 待实现：橡皮擦工具
 
 - 恢复到编辑前的原始纹理
@@ -297,6 +310,7 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 | Ctrl+Y | 重做 |
 | Ctrl+O | 打开文件 |
 | Ctrl+S | 保存 |
+| Ctrl+Shift+S | 导出（Export As） |
 | Ctrl+A | 全选 |
 | Ctrl+D | 取消选择 |
 | Ctrl+Shift+I | 反选 |
@@ -325,4 +339,4 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 ---
 
 **最后更新**: 2025-12-30
-**项目版本**: 0.1-dev (Qt 方案) - 渲染系统改进：光照优化 + 白模/线框切换
+**项目版本**: 0.1-dev (Qt 方案) - 新增 M7.5 OBJ 带纹理导出里程碑

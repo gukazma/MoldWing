@@ -73,6 +73,10 @@ public:
     // Save edited texture to file
     bool saveTexture(const QString& filePath);
 
+    // Get texture edit buffer (for export)
+    TextureEditBuffer* editBuffer() { return m_editBuffer.get(); }
+    const TextureEditBuffer* editBuffer() const { return m_editBuffer.get(); }
+
     // 白模模式（强制无纹理渲染）
     void setWhiteModelMode(bool enabled) { m_meshRenderer.setWhiteModelMode(enabled); }
     bool isWhiteModelMode() const { return m_meshRenderer.isWhiteModelMode(); }
