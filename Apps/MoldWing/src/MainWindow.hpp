@@ -20,6 +20,8 @@ class QSlider;
 class QSpinBox;
 class QDoubleSpinBox;
 class QGroupBox;
+class QTreeWidget;
+class QTreeWidgetItem;
 
 namespace MoldWing
 {
