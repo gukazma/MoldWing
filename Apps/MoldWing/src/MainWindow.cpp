@@ -136,6 +136,18 @@ void MainWindow::setupMenus()
     m_resetViewAction->setShortcut(QKeySequence(Qt::Key_Home));
     connect(m_resetViewAction, &QAction::triggered, this, &MainWindow::onResetView);
 
+    m_viewMenu->addSeparator();
+
+    m_toggleWhiteModelAction = m_viewMenu->addAction(tr("&White Model"));
+    m_toggleWhiteModelAction->setCheckable(true);
+    m_toggleWhiteModelAction->setShortcut(QKeySequence(Qt::Key_W));
+    connect(m_toggleWhiteModelAction, &QAction::toggled, this, &MainWindow::onToggleWhiteModel);
+
+    m_toggleWireframeAction = m_viewMenu->addAction(tr("Wire&frame"));
+    m_toggleWireframeAction->setCheckable(true);
+    m_toggleWireframeAction->setShortcut(QKeySequence(Qt::Key_F));
+    connect(m_toggleWireframeAction, &QAction::toggled, this, &MainWindow::onToggleWireframe);
+
     // M7: Texture menu
     m_textureMenu = menuBar()->addMenu(tr("&Texture"));
 
@@ -796,6 +808,44 @@ void MainWindow::onSaveTexture()
     {
         QMessageBox::warning(this, tr("Error"),
             tr("Failed to save texture to:\n%1").arg(filePath));
+    }
+}
+
+void MainWindow::onToggleWhiteModel(bool checked)
+{
+    if (!m_viewport3D)
+        return;
+
+    m_viewport3D->setWhiteModelMode(checked);
+
+    if (checked)
+    {
+        statusBar()->showMessage(tr("White model mode enabled"), 3000);
+        LOG_INFO("白模模式：开启");
+    }
+    else
+    {
+        statusBar()->showMessage(tr("White model mode disabled"), 3000);
+        LOG_INFO("白模模式：关闭");
+    }
+}
+
+void MainWindow::onToggleWireframe(bool checked)
+{
+    if (!m_viewport3D)
+        return;
+
+    m_viewport3D->setShowWireframe(checked);
+
+    if (checked)
+    {
+        statusBar()->showMessage(tr("Wireframe mode enabled"), 3000);
+        LOG_INFO("线框模式：开启");
+    }
+    else
+    {
+        statusBar()->showMessage(tr("Wireframe mode disabled"), 3000);
+        LOG_INFO("线框模式：关闭");
     }
 }
 

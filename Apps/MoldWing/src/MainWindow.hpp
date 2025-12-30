@@ -57,6 +57,10 @@ private slots:
     void onExitTextureEditMode();
     void onSaveTexture();
 
+    // 渲染模式切换
+    void onToggleWhiteModel(bool checked);
+    void onToggleWireframe(bool checked);
+
 private:
     void setupMenus();
     void setupToolBar();
@@ -116,6 +120,10 @@ private:
     QAction* m_enterTextureEditAction = nullptr;
     QAction* m_exitTextureEditAction = nullptr;
     QAction* m_saveTextureAction = nullptr;
+
+    // 渲染模式 actions
+    QAction* m_toggleWhiteModelAction = nullptr;
+    QAction* m_toggleWireframeAction = nullptr;
 
     // Current mesh data
     std::shared_ptr<MeshData> m_currentMesh;

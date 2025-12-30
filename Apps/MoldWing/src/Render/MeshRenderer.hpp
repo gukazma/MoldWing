@@ -52,6 +52,14 @@ public:
     // Check if current mesh has textures
     bool hasTextures() const { return m_hasTextures; }
 
+    // 白模模式（强制无纹理渲染）
+    void setWhiteModelMode(bool enabled) { m_forceWhiteModel = enabled; }
+    bool isWhiteModelMode() const { return m_forceWhiteModel; }
+
+    // 线框模式
+    void setShowWireframe(bool enabled) { m_showWireframe = enabled; }
+    bool isShowWireframe() const { return m_showWireframe; }
+
     // Update a GPU texture from TextureData (for texture editing)
     void updateTexture(Diligent::IDeviceContext* pContext, int textureIndex, const TextureData& texData);
 
@@ -71,6 +79,8 @@ private:
     // Pipeline objects
     Diligent::RefCntAutoPtr<Diligent::IPipelineState> m_pPSO;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> m_pSRB;
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState> m_pWireframePSO;  // 线框渲染
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> m_pWireframeSRB;
 
     // Buffers
     Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pVertexBuffer;
@@ -89,6 +99,8 @@ private:
 
     // Texture state
     bool m_hasTextures = false;
+    bool m_forceWhiteModel = false;  // 强制白模模式
+    bool m_showWireframe = false;    // 线框模式
 
     bool m_initialized = false;
 };

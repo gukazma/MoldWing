@@ -78,32 +78,32 @@ struct PSInput
 
 float4 main(in PSInput PSIn) : SV_Target
 {
-    // Normalize inputs
-    float3 N = normalize(PSIn.Normal);
-    float3 L = normalize(-g_LightDir.xyz);
+    // 视线方向（同时作为 Headlight 光源方向）
     float3 V = normalize(g_CameraPos.xyz - PSIn.WorldPos);
-    float3 H = normalize(L + V);
 
-    // Lighting calculations
-    float ambient = 0.2;
-    float diffuse = max(dot(N, L), 0.0) * 0.7;
-    float specular = pow(max(dot(N, H), 0.0), 32.0) * 0.3;
-
-    // Base color: from texture or default gray
-    float3 baseColor;
     if (g_Flags.x > 0.5)
     {
-        baseColor = g_Texture.Sample(g_Texture_sampler, PSIn.TexCoord).rgb;
+        // 纹理模式：完全无光照（Unlit），直接输出纹理原色
+        return float4(g_Texture.Sample(g_Texture_sampler, PSIn.TexCoord).rgb, 1.0);
     }
     else
     {
-        baseColor = float3(0.7, 0.7, 0.7);
+        // 白模模式：MeshLab 风格 Headlight + Lambertian
+        float3 N = normalize(PSIn.Normal);
+
+        // Headlight: 光源方向 = 视线方向（从相机照向物体）
+        float3 L = V;
+
+        // Lambertian 漫反射（无高光）
+        float ambient = 0.15;
+        float diffuse = max(dot(N, L), 0.0) * 0.85;
+
+        // 基础色：浅灰（类似 MeshLab 默认）
+        float3 baseColor = float3(0.8, 0.8, 0.8);
+
+        float3 color = baseColor * (ambient + diffuse);
+        return float4(color, 1.0);
     }
-
-    // Combine lighting
-    float3 color = baseColor * (ambient + diffuse) + float3(1, 1, 1) * specular;
-
-    return float4(color, 1.0);
 }
 )";
 
@@ -245,6 +245,14 @@ bool MeshRenderer::createPipeline(IRenderDevice* pDevice, ISwapChain* pSwapChain
     if (!m_pPSO)
         return false;
 
+    // 创建线框渲染 PSO（修改光栅化状态）
+    psoCI.PSODesc.Name = "Mesh Wireframe PSO";
+    psoCI.GraphicsPipeline.RasterizerDesc.FillMode = FILL_MODE_WIREFRAME;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;  // 显示所有边
+    pDevice->CreateGraphicsPipelineState(psoCI, &m_pWireframePSO);
+    if (!m_pWireframePSO)
+        return false;
+
     // Create constant buffer
     BufferDesc cbDesc;
     cbDesc.Name = "Constants CB";
@@ -262,6 +270,11 @@ bool MeshRenderer::createPipeline(IRenderDevice* pDevice, ISwapChain* pSwapChain
 
     // Create shader resource binding
     m_pPSO->CreateShaderResourceBinding(&m_pSRB, true);
+
+    // 为线框 PSO 绑定常量缓冲区
+    m_pWireframePSO->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants")->Set(m_pConstantBuffer);
+    m_pWireframePSO->GetStaticVariableByName(SHADER_TYPE_PIXEL, "Constants")->Set(m_pConstantBuffer);
+    m_pWireframePSO->CreateShaderResourceBinding(&m_pWireframeSRB, true);
 
     return true;
 }
@@ -371,6 +384,12 @@ bool MeshRenderer::loadMesh(const MeshData& mesh)
         if (pVar)
         {
             pVar->Set(m_textureSRVs[0]);
+        }
+        // 也为线框 SRB 绑定纹理
+        auto* pWireframeVar = m_pWireframeSRB->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+        if (pWireframeVar)
+        {
+            pWireframeVar->Set(m_textureSRVs[0]);
         }
     }
 
@@ -487,16 +506,25 @@ void MeshRenderer::render(IDeviceContext* pContext, const OrbitCamera& camera)
         cb->CameraPos[2] = camZ;
         cb->CameraPos[3] = 1.0f;
 
-        // Flags (T6.1.7: hasTexture flag)
-        cb->Flags[0] = m_hasTextures ? 1.0f : 0.0f;
+        // Flags (hasTexture flag, 考虑强制白模模式)
+        bool useTexture = m_hasTextures && !m_forceWhiteModel;
+        cb->Flags[0] = useTexture ? 1.0f : 0.0f;
         cb->Flags[1] = 0.0f;
         cb->Flags[2] = 0.0f;
         cb->Flags[3] = 0.0f;
     }
 
-    // Set pipeline state
-    pContext->SetPipelineState(m_pPSO);
-    pContext->CommitShaderResources(m_pSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    // Set pipeline state（根据线框模式选择 PSO）
+    if (m_showWireframe)
+    {
+        pContext->SetPipelineState(m_pWireframePSO);
+        pContext->CommitShaderResources(m_pWireframeSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    }
+    else
+    {
+        pContext->SetPipelineState(m_pPSO);
+        pContext->CommitShaderResources(m_pSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    }
 
     // Set vertex/index buffers
     IBuffer* pBuffs[] = {m_pVertexBuffer};

@@ -89,7 +89,7 @@ MoldWing/
 | M4 | 套索选择 | ✅ 100% |
 | M5 | 连通选择 | ✅ 100% |
 | M6 | 纹理渲染 + 编辑模式框架 | ✅ 100% |
-| M7 | 克隆图章工具 | ⏳ 待开始 |
+| M7 | 克隆图章工具 | ✅ 100% |
 | M8 | 橡皮擦工具 | ⏳ 待开始 |
 | M9 | 颜色调整 | ⏳ 待开始 |
 | M10 | 几何修复（孔洞/非流形） | ⏳ 待开始 |
@@ -171,18 +171,65 @@ MoldWing/
 - ✅ TextureEditTool（工具基类：笔刷大小、硬度、鼠标事件）
 - ✅ 手动保存功能（saveTexture 写入 PNG/JPG/BMP/TGA）
 
-### M7 待实现：克隆图章工具
+### M7 已完成模块：克隆图章工具
 
-- Alt+点击选取克隆源（屏幕坐标→纹理坐标）
-- 拖拽进行克隆绘制
-- 纹理空间实际操作（保持原生分辨率）
-- 撤销支持
+**M7.1 屏幕-纹理映射验证**
+- ✅ ScreenToTextureMapper 集成到 DiligentWidget
+- ✅ Alt+点击显示 UV 坐标和像素位置（状态栏）
+- ✅ Moller-Trumbore 射线-三角形求交算法
+- ✅ 重心坐标插值计算精确纹理坐标
+
+**M7.2 实时纹理绘制**
+- ✅ TextureEditBuffer 创建和初始化
+- ✅ MeshRenderer::updateTextureFromBuffer() GPU 纹理更新
+- ✅ 脏区域跟踪和高效同步
+
+**M7.3 拖拽绘制连续性**
+- ✅ InteractionMode::TextureEdit 模式
+- ✅ 纹理编辑鼠标事件处理
+- ✅ beginTexturePaint/updateTexturePaint/endTexturePaint 状态管理
+
+**M7.4 克隆源选择**
+- ✅ Alt+左键设置克隆源
+- ✅ cloneSourceSet 信号通知状态栏
+- ✅ 克隆源坐标存储
+
+**M7.5 克隆像素绘制**
+- ✅ 首次绘制点记录用于偏移计算
+- ✅ 源-目标偏移动态计算
+- ✅ 圆形笔刷区域像素复制
+- ✅ 纹理空间实际操作（保持原生分辨率）
+
+**M7.6 撤销/重做支持**
+- ✅ TextureEditCommand 记录像素变更
+- ✅ 笔画开始时创建命令
+- ✅ 笔画结束时提交到 QUndoStack
+- ✅ undo/redo 恢复像素数据
+- ✅ syncTextureToGPU() 撤销后同步渲染
+
+**M7.7 完整 UI 集成**
+- ✅ Texture 菜单（进入/退出编辑模式、保存纹理）
+- ✅ 快捷键支持
+- ✅ 状态栏编辑模式提示
+- ✅ saveTexture() 保存到 PNG/JPG/BMP/TGA
 
 ### M8 待实现：橡皮擦工具
 
 - 恢复到编辑前的原始纹理
 - 笔刷大小调节
 - 撤销支持
+
+### 渲染系统改进（2025-12-30）
+
+**光照模型优化**
+- ✅ 纹理模式：完全无光照（Unlit），直接输出纹理原色
+- ✅ 白模模式：MeshLab 风格 Headlight + Lambertian（无高光）
+- ✅ 环境光 0.15 + 漫反射 0.85，基础色 (0.8, 0.8, 0.8)
+
+**渲染模式切换**
+- ✅ 白模模式切换（View → White Model，快捷键 W）
+- ✅ 线框模式切换（View → Wireframe，快捷键 F）
+- ✅ 线框 PSO（FILL_MODE_WIREFRAME + CULL_MODE_NONE）
 
 ## 构建命令
 
@@ -260,6 +307,8 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 | B | 画笔工具 |
 | E | 橡皮擦 |
 | S | 克隆图章 |
+| W | 白模模式切换 |
+| F | 线框模式切换 |
 | Delete | 删除选中面 |
 
 ## 鼠标操作
@@ -275,5 +324,5 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 
 ---
 
-**最后更新**: 2025-12-28
-**项目版本**: 0.1-dev (Qt 方案) - M6 纹理渲染+编辑框架完成，下一步 M7 克隆图章
+**最后更新**: 2025-12-30
+**项目版本**: 0.1-dev (Qt 方案) - 渲染系统改进：光照优化 + 白模/线框切换

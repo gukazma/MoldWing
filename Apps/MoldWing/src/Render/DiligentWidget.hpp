@@ -73,6 +73,14 @@ public:
     // Save edited texture to file
     bool saveTexture(const QString& filePath);
 
+    // 白模模式（强制无纹理渲染）
+    void setWhiteModelMode(bool enabled) { m_meshRenderer.setWhiteModelMode(enabled); }
+    bool isWhiteModelMode() const { return m_meshRenderer.isWhiteModelMode(); }
+
+    // 线框模式
+    void setShowWireframe(bool enabled) { m_meshRenderer.setShowWireframe(enabled); }
+    bool isShowWireframe() const { return m_meshRenderer.isShowWireframe(); }
+
     // Interaction mode
     enum class InteractionMode
     {
