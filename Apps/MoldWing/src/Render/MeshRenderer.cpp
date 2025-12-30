@@ -415,6 +415,42 @@ void MeshRenderer::updateTexture(IDeviceContext* pContext, int textureIndex, con
                             RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }
 
+void MeshRenderer::updateTextureFromBuffer(IDeviceContext* pContext, int textureIndex, const TextureEditBuffer& buffer)
+{
+    if (textureIndex < 0 || textureIndex >= static_cast<int>(m_textures.size()))
+        return;
+
+    auto& pTexture = m_textures[textureIndex];
+    if (!pTexture || !buffer.isValid())
+        return;
+
+    // Check dimensions match
+    const auto& texDesc = pTexture->GetDesc();
+    if (texDesc.Width != static_cast<Uint32>(buffer.width()) ||
+        texDesc.Height != static_cast<Uint32>(buffer.height()))
+    {
+        MW_LOG_ERROR("Texture dimensions mismatch during buffer update");
+        return;
+    }
+
+    // Update texture data from buffer
+    Box updateBox;
+    updateBox.MinX = 0;
+    updateBox.MinY = 0;
+    updateBox.MaxX = texDesc.Width;
+    updateBox.MaxY = texDesc.Height;
+
+    TextureSubResData subResData;
+    subResData.pData = buffer.data();
+    subResData.Stride = static_cast<Uint64>(buffer.bytesPerLine());
+
+    pContext->UpdateTexture(pTexture, 0, 0, updateBox, subResData,
+                            RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                            RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    LOG_DEBUG("Updated texture {} from buffer ({}x{})", textureIndex, buffer.width(), buffer.height());
+}
+
 void MeshRenderer::render(IDeviceContext* pContext, const OrbitCamera& camera)
 {
     if (!m_initialized || !m_pVertexBuffer || !m_pIndexBuffer)

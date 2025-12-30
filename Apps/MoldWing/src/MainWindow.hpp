@@ -52,6 +52,11 @@ private slots:
     void onGrowSelection();
     void onShrinkSelection();
 
+    // M7: Texture editing slots
+    void onEnterTextureEditMode();
+    void onExitTextureEditMode();
+    void onSaveTexture();
+
 private:
     void setupMenus();
     void setupToolBar();
@@ -92,6 +97,7 @@ private:
     QMenu* m_editMenu = nullptr;
     QMenu* m_viewMenu = nullptr;
     QMenu* m_selectMenu = nullptr;  // New selection menu
+    QMenu* m_textureMenu = nullptr; // M7: Texture editing menu
 
     // Actions
     QAction* m_openAction = nullptr;
@@ -105,6 +111,11 @@ private:
     QAction* m_growSelectionAction = nullptr;
     QAction* m_shrinkSelectionAction = nullptr;
     QAction* m_resetViewAction = nullptr;
+
+    // M7: Texture editing actions
+    QAction* m_enterTextureEditAction = nullptr;
+    QAction* m_exitTextureEditAction = nullptr;
+    QAction* m_saveTextureAction = nullptr;
 
     // Current mesh data
     std::shared_ptr<MeshData> m_currentMesh;

@@ -135,6 +135,25 @@ void MainWindow::setupMenus()
     m_resetViewAction = m_viewMenu->addAction(tr("&Reset View"));
     m_resetViewAction->setShortcut(QKeySequence(Qt::Key_Home));
     connect(m_resetViewAction, &QAction::triggered, this, &MainWindow::onResetView);
+
+    // M7: Texture menu
+    m_textureMenu = menuBar()->addMenu(tr("&Texture"));
+
+    m_enterTextureEditAction = m_textureMenu->addAction(tr("&Enter Edit Mode"));
+    m_enterTextureEditAction->setShortcut(QKeySequence(Qt::Key_T));
+    connect(m_enterTextureEditAction, &QAction::triggered, this, &MainWindow::onEnterTextureEditMode);
+
+    m_exitTextureEditAction = m_textureMenu->addAction(tr("E&xit Edit Mode"));
+    m_exitTextureEditAction->setShortcut(QKeySequence(Qt::Key_Escape));
+    connect(m_exitTextureEditAction, &QAction::triggered, this, &MainWindow::onExitTextureEditMode);
+    m_exitTextureEditAction->setEnabled(false);
+
+    m_textureMenu->addSeparator();
+
+    m_saveTextureAction = m_textureMenu->addAction(tr("&Save Texture..."));
+    m_saveTextureAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+    connect(m_saveTextureAction, &QAction::triggered, this, &MainWindow::onSaveTexture);
+    m_saveTextureAction->setEnabled(false);
 }
 
 void MainWindow::setupToolBar()
@@ -301,6 +320,29 @@ void MainWindow::setupDockWidgets()
         m_linkAngleSpinBox->blockSignals(false);
     });
 
+    // Step 1: Connect texture coordinate picked signal to status bar
+    connect(m_viewport3D, &DiligentWidget::textureCoordPicked,
+            this, [this](float u, float v, int texX, int texY, uint32_t faceId) {
+        statusBar()->showMessage(
+            tr("UV: (%1, %2) | Pixel: (%3, %4) | Face: %5")
+                .arg(u, 0, 'f', 3)
+                .arg(v, 0, 'f', 3)
+                .arg(texX)
+                .arg(texY)
+                .arg(faceId),
+            3000);  // Show for 3 seconds
+    });
+
+    // Step 4: Connect clone source set signal
+    connect(m_viewport3D, &DiligentWidget::cloneSourceSet,
+            this, [this](int texX, int texY) {
+        statusBar()->showMessage(
+            tr("Clone Source Set: Pixel (%1, %2) - Drag to clone")
+                .arg(texX)
+                .arg(texY),
+            5000);  // Show for 5 seconds
+    });
+
     propertyLayout->addWidget(m_linkSettingsGroup);
 
     // Initially hide link settings (only show when link mode is active)
@@ -398,7 +440,7 @@ void MainWindow::onOpenFile()
              m_currentMesh->vertexCount(), m_currentMesh->faceCount());
 
     // Load mesh into renderer
-    if (!m_viewport3D->loadMesh(*m_currentMesh))
+    if (!m_viewport3D->loadMesh(m_currentMesh))
     {
         MW_LOG_ERROR("加载网格到渲染器失败");
         QMessageBox::critical(this, tr("Error"),
@@ -474,10 +516,11 @@ void MainWindow::onToolSelected(int index)
     // Show/hide brush settings based on tool
     bool isBrushTool = (index == 1);
     bool isLinkTool = (index == 3);
+    bool isTextureTool = (index >= 4 && index <= 7);  // Paint, Eraser, Clone, Healing
 
     if (m_brushSettingsGroup)
     {
-        m_brushSettingsGroup->setVisible(isBrushTool);
+        m_brushSettingsGroup->setVisible(isBrushTool || isTextureTool);
     }
     if (m_linkSettingsGroup)
     {
@@ -507,6 +550,27 @@ void MainWindow::onToolSelected(int index)
             case 3:  // Connected Select
                 m_viewport3D->selectionSystem()->setMode(SelectionMode::Link);
                 statusBar()->showMessage(tr("Connected selection mode - click to select connected faces"));
+                break;
+        }
+    }
+    // Texture editing tools (4-7)
+    else if (index >= 4 && index <= 7)
+    {
+        m_viewport3D->setInteractionMode(DiligentWidget::InteractionMode::TextureEdit);
+
+        switch (index)
+        {
+            case 4:  // Paint Brush
+                statusBar()->showMessage(tr("Paint mode - drag to paint red on texture"));
+                break;
+            case 5:  // Eraser
+                statusBar()->showMessage(tr("Eraser mode (not yet implemented)"));
+                break;
+            case 6:  // Clone Stamp
+                statusBar()->showMessage(tr("Clone Stamp - Alt+click to set source, drag to clone"));
+                break;
+            case 7:  // Healing Brush
+                statusBar()->showMessage(tr("Healing Brush (not yet implemented)"));
                 break;
         }
     }
@@ -654,6 +718,85 @@ void MainWindow::onShrinkSelection()
     }
 
     LOG_DEBUG("收缩选择");
+}
+
+// M7: Texture editing slots
+
+void MainWindow::onEnterTextureEditMode()
+{
+    if (!m_viewport3D || !m_currentMesh)
+    {
+        QMessageBox::warning(this, tr("Warning"),
+            tr("Please load a model with textures first."));
+        return;
+    }
+
+    // Switch to texture edit mode with Clone Stamp tool selected
+    m_viewport3D->setInteractionMode(DiligentWidget::InteractionMode::TextureEdit);
+
+    // Update tool list selection
+    if (m_toolList)
+    {
+        m_toolList->setCurrentRow(6);  // Clone Stamp
+    }
+
+    // Enable/disable menu actions
+    m_enterTextureEditAction->setEnabled(false);
+    m_exitTextureEditAction->setEnabled(true);
+    m_saveTextureAction->setEnabled(true);
+
+    statusBar()->showMessage(tr("[Texture Edit Mode] Alt+Click to set clone source, drag to clone. Press Esc to exit."));
+    LOG_INFO("进入纹理编辑模式");
+}
+
+void MainWindow::onExitTextureEditMode()
+{
+    if (!m_viewport3D)
+        return;
+
+    // Switch to camera mode
+    m_viewport3D->setInteractionMode(DiligentWidget::InteractionMode::Camera);
+
+    // Clear tool list selection or select a selection tool
+    if (m_toolList)
+    {
+        m_toolList->setCurrentRow(0);  // Box Select
+    }
+
+    // Enable/disable menu actions
+    m_enterTextureEditAction->setEnabled(true);
+    m_exitTextureEditAction->setEnabled(false);
+
+    statusBar()->showMessage(tr("Exited texture edit mode"));
+    LOG_INFO("退出纹理编辑模式");
+}
+
+void MainWindow::onSaveTexture()
+{
+    if (!m_viewport3D)
+        return;
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Save Texture"),
+        QString(),
+        tr("PNG Images (*.png);;JPEG Images (*.jpg *.jpeg);;BMP Images (*.bmp);;All Files (*)")
+    );
+
+    if (filePath.isEmpty())
+        return;
+
+    LOG_INFO("保存纹理: {}", filePath.toStdString());
+
+    if (m_viewport3D->saveTexture(filePath))
+    {
+        statusBar()->showMessage(tr("Texture saved: %1").arg(filePath), 5000);
+    }
+    else
+    {
+        QMessageBox::warning(this, tr("Error"),
+            tr("Failed to save texture to:\n%1").arg(filePath));
+    }
 }
 
 } // namespace MoldWing

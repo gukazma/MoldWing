@@ -7,6 +7,7 @@
 #pragma once
 
 #include "Core/MeshData.hpp"
+#include "Texture/TextureEditBuffer.hpp"
 #include "OrbitCamera.hpp"
 
 #include <RefCntAutoPtr.hpp>
@@ -53,6 +54,9 @@ public:
 
     // Update a GPU texture from TextureData (for texture editing)
     void updateTexture(Diligent::IDeviceContext* pContext, int textureIndex, const TextureData& texData);
+
+    // Update a GPU texture from TextureEditBuffer (for real-time editing)
+    void updateTextureFromBuffer(Diligent::IDeviceContext* pContext, int textureIndex, const TextureEditBuffer& buffer);
 
 private:
     bool createPipeline(Diligent::IRenderDevice* pDevice,

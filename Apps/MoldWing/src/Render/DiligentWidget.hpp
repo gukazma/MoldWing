@@ -31,6 +31,9 @@
 #include "Selection/SelectionSystem.hpp"
 #include "Selection/FacePicker.hpp"
 #include "Selection/SelectionRenderer.hpp"
+#include "Texture/ScreenToTextureMapper.hpp"
+#include "Texture/TextureEditBuffer.hpp"
+#include "Texture/TextureEditCommand.hpp"
 
 #include <QPolygonF>
 
@@ -51,7 +54,7 @@ public:
     bool isInitialized() const { return m_initialized; }
 
     // Load mesh for rendering
-    bool loadMesh(const MeshData& mesh);
+    bool loadMesh(std::shared_ptr<MeshData> mesh);
 
     // Get camera for external access
     OrbitCamera& camera() { return m_camera; }
@@ -62,13 +65,20 @@ public:
     const SelectionSystem* selectionSystem() const { return m_selectionSystem; }
 
     // Set undo stack for selection commands
-    void setUndoStack(QUndoStack* stack) { m_undoStack = stack; }
+    void setUndoStack(QUndoStack* stack);
+
+    // Update GPU texture from edit buffer (called after undo/redo)
+    void syncTextureToGPU();
+
+    // Save edited texture to file
+    bool saveTexture(const QString& filePath);
 
     // Interaction mode
     enum class InteractionMode
     {
-        Camera,     // Camera manipulation (default)
-        Selection   // Selection mode (box select)
+        Camera,       // Camera manipulation (default)
+        Selection,    // Selection mode (box select)
+        TextureEdit   // Texture editing mode (clone stamp, etc.)
     };
 
     InteractionMode interactionMode() const { return m_interactionMode; }
@@ -97,6 +107,12 @@ signals:
     void interactionModeChanged(InteractionMode mode);
     void brushRadiusChanged(int radius);
     void linkAngleThresholdChanged(float angle);
+
+    // Step 1: 纹理坐标拾取信号
+    void textureCoordPicked(float u, float v, int texX, int texY, uint32_t faceId);
+
+    // Step 4: Clone source set signal
+    void cloneSourceSet(int texX, int texY);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -146,6 +162,12 @@ private:
 
     // M5: Link selection helper
     void performLinkSelect(const QPoint& pos);
+
+    // Step 3: Texture painting helpers
+    void beginTexturePaint(const QPoint& pos);
+    void updateTexturePaint(const QPoint& pos);
+    void endTexturePaint();
+    void paintBrushAtPosition(int texX, int texY);
 
     SelectionOp getSelectionOp() const;
 
@@ -208,6 +230,27 @@ private:
 
     // Current mesh for ray picking (not owned)
     const MeshData* m_currentMesh = nullptr;
+
+    // Step 1: Screen to texture mapper
+    ScreenToTextureMapper m_textureMapper;
+    std::shared_ptr<MeshData> m_meshPtr;  // Shared ptr for mapper
+
+    // Step 2: Texture edit buffer for real-time editing
+    std::unique_ptr<TextureEditBuffer> m_editBuffer;
+
+    // Step 3: Texture painting state
+    bool m_texturePainting = false;    // True when dragging to paint
+    int m_textureBrushRadius = 10;     // Texture space brush radius
+
+    // Step 4: Clone stamp state
+    bool m_cloneSourceSet = false;     // True if clone source is set
+    int m_cloneSourceTexX = 0;         // Clone source texture X
+    int m_cloneSourceTexY = 0;         // Clone source texture Y
+    int m_cloneFirstDestTexX = -1;     // First destination X (for offset calculation)
+    int m_cloneFirstDestTexY = -1;     // First destination Y
+
+    // Step 6: Current texture edit command for undo
+    TextureEditCommand* m_currentEditCommand = nullptr;
 
     // State
     bool m_initialized = false;

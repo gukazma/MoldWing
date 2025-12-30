@@ -242,34 +242,53 @@ void DiligentWidget::initializeDiligent()
 #endif
 }
 
-bool DiligentWidget::loadMesh(const MeshData& mesh)
+bool DiligentWidget::loadMesh(std::shared_ptr<MeshData> mesh)
 {
-    if (!m_initialized)
+    if (!m_initialized || !mesh)
         return false;
 
-    if (!m_meshRenderer.loadMesh(mesh))
+    if (!m_meshRenderer.loadMesh(*mesh))
         return false;
 
     // Store mesh pointer for ray picking
-    m_currentMesh = &mesh;
+    m_currentMesh = mesh.get();
+    m_meshPtr = mesh;  // Keep shared_ptr for texture mapper
 
     // Load mesh into face picker
     if (m_facePicker.isInitialized())
     {
-        m_facePicker.loadMesh(mesh);
+        m_facePicker.loadMesh(*mesh);
     }
 
     // Load mesh into selection renderer
     if (m_selectionRenderer.isInitialized())
     {
-        m_selectionRenderer.loadMesh(mesh);
+        m_selectionRenderer.loadMesh(*mesh);
     }
 
     // Update selection system face count
-    m_selectionSystem->setFaceCount(static_cast<uint32_t>(mesh.faceCount()));
+    m_selectionSystem->setFaceCount(static_cast<uint32_t>(mesh->faceCount()));
+
+    // Step 1: Setup texture mapper
+    m_textureMapper.setMesh(mesh);
+
+    // Step 2: Initialize edit buffer if mesh has textures
+    if (!mesh->textures.empty() && mesh->textures[0])
+    {
+        m_editBuffer = std::make_unique<TextureEditBuffer>();
+        if (m_editBuffer->initialize(*mesh->textures[0]))
+        {
+            LOG_INFO("TextureEditBuffer initialized: {}x{}", m_editBuffer->width(), m_editBuffer->height());
+        }
+        else
+        {
+            MW_LOG_ERROR("Failed to initialize TextureEditBuffer");
+            m_editBuffer.reset();
+        }
+    }
 
     // Fit camera to mesh bounds
-    const auto& b = mesh.bounds;
+    const auto& b = mesh->bounds;
     m_camera.fitToModel(b.min[0], b.min[1], b.min[2], b.max[0], b.max[1], b.max[2]);
 
     return true;
@@ -434,6 +453,93 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
     m_ctrlHeld = event->modifiers() & Qt::ControlModifier;
     m_altHeld = event->modifiers() & Qt::AltModifier;
 
+    // Step 1: Alt+左键点击 - 纹理坐标拾取 / Step 4: 克隆源设置
+    if (m_altHeld && event->button() == Qt::LeftButton)
+    {
+        if (m_facePicker.isInitialized() && m_facePicker.hasMesh())
+        {
+            // Render ID buffer
+            m_facePicker.renderIDBuffer(m_pContext, m_camera);
+
+            // Read face ID at cursor position
+            qreal dpr = devicePixelRatio();
+            int x = static_cast<int>(event->pos().x() * dpr);
+            int y = static_cast<int>(event->pos().y() * dpr);
+
+            uint32_t faceId = m_facePicker.readFaceID(m_pContext, x, y);
+
+            if (faceId != FacePicker::INVALID_FACE_ID)
+            {
+                // Use ScreenToTextureMapper to get UV coordinates
+                auto result = m_textureMapper.mapScreenToTexture(
+                    faceId,
+                    event->pos().x(), event->pos().y(),
+                    m_camera,
+                    width(), height());
+
+                if (result.valid)
+                {
+                    emit textureCoordPicked(result.u, result.v, result.texX, result.texY, faceId);
+
+                    // Step 4: In TextureEdit mode, Alt+click sets clone source
+                    if (m_interactionMode == InteractionMode::TextureEdit)
+                    {
+                        m_cloneSourceTexX = result.texX;
+                        m_cloneSourceTexY = result.texY;
+                        m_cloneSourceSet = true;
+                        m_cloneFirstDestTexX = -1;  // Reset first dest for new source
+                        m_cloneFirstDestTexY = -1;
+
+                        emit cloneSourceSet(result.texX, result.texY);
+                        LOG_DEBUG("Clone source set at texture ({}, {})", result.texX, result.texY);
+                    }
+                    else
+                    {
+                        // Step 2: 在纹理上绘制红色方块验证（非 TextureEdit 模式）
+                        if (m_editBuffer && m_editBuffer->isValid())
+                        {
+                            const int squareSize = 20;
+                            int startX = result.texX - squareSize / 2;
+                            int startY = result.texY - squareSize / 2;
+
+                            // 绘制红色方块
+                            for (int dy = 0; dy < squareSize; ++dy)
+                            {
+                                for (int dx = 0; dx < squareSize; ++dx)
+                                {
+                                    int px = startX + dx;
+                                    int py = startY + dy;
+
+                                    // 边界检查
+                                    if (px >= 0 && px < m_editBuffer->width() &&
+                                        py >= 0 && py < m_editBuffer->height())
+                                    {
+                                        m_editBuffer->setPixel(px, py, 255, 0, 0, 255);  // 红色
+                                    }
+                                }
+                            }
+
+                            // 更新 GPU 纹理
+                            m_meshRenderer.updateTextureFromBuffer(m_pContext, 0, *m_editBuffer);
+                            m_editBuffer->clearDirty();
+
+                            LOG_DEBUG("Drew red square at texture ({}, {})", result.texX, result.texY);
+                        }
+                    }
+                }
+                else
+                {
+                    LOG_DEBUG("Texture mapping failed for face {}", faceId);
+                }
+            }
+            else
+            {
+                LOG_DEBUG("No face hit at ({}, {})", event->pos().x(), event->pos().y());
+            }
+        }
+        return;  // Alt+点击处理完毕，不继续其他逻辑
+    }
+
     // Selection mode: LMB starts selection based on current selection mode
     if (m_interactionMode == InteractionMode::Selection)
     {
@@ -455,6 +561,16 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
             {
                 beginBoxSelect(event->pos());
             }
+            return;
+        }
+    }
+
+    // Step 3: TextureEdit mode - LMB starts painting
+    if (m_interactionMode == InteractionMode::TextureEdit)
+    {
+        if (event->button() == Qt::LeftButton)
+        {
+            beginTexturePaint(event->pos());
             return;
         }
     }
@@ -484,6 +600,13 @@ void DiligentWidget::mouseReleaseEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton)
     {
+        // Handle texture painting end
+        if (m_texturePainting)
+        {
+            endTexturePaint();
+            return;
+        }
+
         // Handle box selection end
         if (m_boxSelecting)
         {
@@ -574,6 +697,13 @@ void DiligentWidget::mouseMoveEvent(QMouseEvent* event)
     if (m_lassoSelecting)
     {
         updateLassoSelect(event->pos());
+        return;
+    }
+
+    // Step 3: Handle texture painting drag
+    if (m_texturePainting)
+    {
+        updateTexturePaint(event->pos());
         return;
     }
 
@@ -762,14 +892,24 @@ void DiligentWidget::setInteractionMode(InteractionMode mode)
         m_interactionMode = mode;
         emit interactionModeChanged(mode);
 
-        // Cancel any ongoing box selection when switching modes
+        // Cancel any ongoing operations when switching modes
         if (m_boxSelecting)
         {
             m_boxSelecting = false;
         }
+        if (m_texturePainting)
+        {
+            m_texturePainting = false;
+        }
 
-        LOG_DEBUG("Interaction mode changed to {}",
-                  mode == InteractionMode::Camera ? "Camera" : "Selection");
+        const char* modeName = "Unknown";
+        switch (mode)
+        {
+            case InteractionMode::Camera: modeName = "Camera"; break;
+            case InteractionMode::Selection: modeName = "Selection"; break;
+            case InteractionMode::TextureEdit: modeName = "TextureEdit"; break;
+        }
+        LOG_DEBUG("Interaction mode changed to {}", modeName);
     }
 }
 
@@ -1305,6 +1445,248 @@ void DiligentWidget::performLinkSelect(const QPoint& pos)
     }
 
     LOG_DEBUG("Link select: {} faces from seed {}", connectedFaces.size(), seedFace);
+}
+
+// Step 3: Texture painting methods
+
+void DiligentWidget::beginTexturePaint(const QPoint& pos)
+{
+    if (!m_editBuffer || !m_editBuffer->isValid())
+        return;
+
+    m_texturePainting = true;
+
+    // Step 6: Create undo command for this stroke
+    if (m_undoStack)
+    {
+        m_currentEditCommand = new TextureEditCommand(m_editBuffer.get(), 0);
+    }
+
+    // Paint at initial position
+    updateTexturePaint(pos);
+
+    LOG_DEBUG("Texture painting started at ({}, {})", pos.x(), pos.y());
+}
+
+void DiligentWidget::updateTexturePaint(const QPoint& pos)
+{
+    if (!m_texturePainting || !m_editBuffer || !m_editBuffer->isValid())
+        return;
+
+    if (!m_facePicker.isInitialized() || !m_facePicker.hasMesh())
+        return;
+
+    // Render ID buffer
+    m_facePicker.renderIDBuffer(m_pContext, m_camera);
+
+    // Read face ID at cursor position
+    qreal dpr = devicePixelRatio();
+    int x = static_cast<int>(pos.x() * dpr);
+    int y = static_cast<int>(pos.y() * dpr);
+
+    uint32_t faceId = m_facePicker.readFaceID(m_pContext, x, y);
+
+    if (faceId == FacePicker::INVALID_FACE_ID)
+        return;
+
+    // Map screen position to texture coordinates
+    auto result = m_textureMapper.mapScreenToTexture(
+        faceId,
+        pos.x(), pos.y(),
+        m_camera,
+        width(), height());
+
+    if (!result.valid)
+        return;
+
+    // Paint brush at texture position
+    paintBrushAtPosition(result.texX, result.texY);
+
+    // Update GPU texture
+    m_meshRenderer.updateTextureFromBuffer(m_pContext, 0, *m_editBuffer);
+    m_editBuffer->clearDirty();
+}
+
+void DiligentWidget::endTexturePaint()
+{
+    m_texturePainting = false;
+
+    // Reset first destination for next stroke
+    m_cloneFirstDestTexX = -1;
+    m_cloneFirstDestTexY = -1;
+
+    // Step 6: Finalize and push undo command
+    if (m_currentEditCommand && m_undoStack)
+    {
+        if (m_currentEditCommand->pixelCount() > 0)
+        {
+            m_currentEditCommand->finalize();
+            m_undoStack->push(m_currentEditCommand);
+            LOG_DEBUG("Texture edit command pushed: {} pixels", m_currentEditCommand->pixelCount());
+        }
+        else
+        {
+            delete m_currentEditCommand;
+        }
+        m_currentEditCommand = nullptr;
+    }
+
+    LOG_DEBUG("Texture painting ended");
+}
+
+void DiligentWidget::paintBrushAtPosition(int texX, int texY)
+{
+    if (!m_editBuffer || !m_editBuffer->isValid())
+        return;
+
+    const int radius = m_textureBrushRadius;
+    const int radiusSq = radius * radius;
+
+    // Step 5: Clone stamp mode - copy from source with offset
+    if (m_cloneSourceSet)
+    {
+        // Calculate offset on first paint
+        if (m_cloneFirstDestTexX < 0)
+        {
+            m_cloneFirstDestTexX = texX;
+            m_cloneFirstDestTexY = texY;
+        }
+
+        // Calculate source-destination offset
+        int offsetX = m_cloneSourceTexX - m_cloneFirstDestTexX;
+        int offsetY = m_cloneSourceTexY - m_cloneFirstDestTexY;
+
+        // Clone pixels from source to destination
+        for (int dy = -radius; dy <= radius; ++dy)
+        {
+            for (int dx = -radius; dx <= radius; ++dx)
+            {
+                // Circular brush check
+                if (dx * dx + dy * dy > radiusSq)
+                    continue;
+
+                int destX = texX + dx;
+                int destY = texY + dy;
+                int srcX = destX + offsetX;
+                int srcY = destY + offsetY;
+
+                // Boundary check for both source and destination
+                if (destX >= 0 && destX < m_editBuffer->width() &&
+                    destY >= 0 && destY < m_editBuffer->height() &&
+                    srcX >= 0 && srcX < m_editBuffer->width() &&
+                    srcY >= 0 && srcY < m_editBuffer->height())
+                {
+                    // Read old pixel for undo
+                    uint8_t oldR, oldG, oldB, oldA;
+                    m_editBuffer->getPixel(destX, destY, oldR, oldG, oldB, oldA);
+
+                    // Read from original texture (not the edited one)
+                    uint8_t newR, newG, newB, newA;
+                    m_editBuffer->getOriginalPixel(srcX, srcY, newR, newG, newB, newA);
+
+                    // Only record if pixel actually changes
+                    if (oldR != newR || oldG != newG || oldB != newB || oldA != newA)
+                    {
+                        // Step 6: Record pixel change for undo
+                        if (m_currentEditCommand)
+                        {
+                            m_currentEditCommand->recordPixel(destX, destY,
+                                oldR, oldG, oldB, oldA,
+                                newR, newG, newB, newA);
+                        }
+
+                        m_editBuffer->setPixel(destX, destY, newR, newG, newB, newA);
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        // No clone source - paint red for testing
+        for (int dy = -radius; dy <= radius; ++dy)
+        {
+            for (int dx = -radius; dx <= radius; ++dx)
+            {
+                // Circular brush check
+                if (dx * dx + dy * dy > radiusSq)
+                    continue;
+
+                int px = texX + dx;
+                int py = texY + dy;
+
+                // Boundary check
+                if (px >= 0 && px < m_editBuffer->width() &&
+                    py >= 0 && py < m_editBuffer->height())
+                {
+                    // Read old pixel for undo
+                    uint8_t oldR, oldG, oldB, oldA;
+                    m_editBuffer->getPixel(px, py, oldR, oldG, oldB, oldA);
+
+                    const uint8_t newR = 255, newG = 0, newB = 0, newA = 255;
+
+                    // Only record if pixel actually changes
+                    if (oldR != newR || oldG != newG || oldB != newB || oldA != newA)
+                    {
+                        // Step 6: Record pixel change for undo
+                        if (m_currentEditCommand)
+                        {
+                            m_currentEditCommand->recordPixel(px, py,
+                                oldR, oldG, oldB, oldA,
+                                newR, newG, newB, newA);
+                        }
+
+                        m_editBuffer->setPixel(px, py, newR, newG, newB, newA);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void DiligentWidget::setUndoStack(QUndoStack* stack)
+{
+    m_undoStack = stack;
+
+    // Connect to undo stack index changes to sync texture after undo/redo
+    if (m_undoStack)
+    {
+        connect(m_undoStack, &QUndoStack::indexChanged, this, [this]() {
+            syncTextureToGPU();
+        });
+    }
+}
+
+void DiligentWidget::syncTextureToGPU()
+{
+    // Update GPU texture from edit buffer after undo/redo
+    if (m_editBuffer && m_editBuffer->isDirty() && m_initialized && m_pContext)
+    {
+        m_meshRenderer.updateTextureFromBuffer(m_pContext, 0, *m_editBuffer);
+        m_editBuffer->clearDirty();
+        LOG_DEBUG("Synced texture to GPU after undo/redo");
+    }
+}
+
+bool DiligentWidget::saveTexture(const QString& filePath)
+{
+    if (!m_editBuffer || !m_editBuffer->isValid())
+    {
+        MW_LOG_ERROR("Cannot save texture: no edit buffer");
+        return false;
+    }
+
+    if (m_editBuffer->save(filePath))
+    {
+        m_editBuffer->setModified(false);
+        LOG_INFO("Texture saved to: {}", filePath.toStdString());
+        return true;
+    }
+    else
+    {
+        MW_LOG_ERROR("Failed to save texture to: {}", filePath.toStdString());
+        return false;
+    }
 }
 
 } // namespace MoldWing
