@@ -8,7 +8,7 @@ project(MoldWing CXX)
 # =============================================================================
 # Find Qt6
 # =============================================================================
-find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Gui Concurrent)
 
 # =============================================================================
 # Find assimp
@@ -173,6 +173,7 @@ target_link_libraries(MoldWing PRIVATE
     # Qt6
     Qt6::Widgets
     Qt6::Gui
+    Qt6::Concurrent
 
     # DiligentEngine
     Diligent-GraphicsEngineD3D11-shared
@@ -246,6 +247,7 @@ if(WIN32)
             "${VCPKG_BIN_DIR}/Qt6Core$<$<CONFIG:Debug>:d>.dll"
             "${VCPKG_BIN_DIR}/Qt6Gui$<$<CONFIG:Debug>:d>.dll"
             "${VCPKG_BIN_DIR}/Qt6Widgets$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/Qt6Concurrent$<$<CONFIG:Debug>:d>.dll"
             "$<TARGET_FILE_DIR:MoldWing>"
         COMMENT "Copying Qt DLLs..."
     )

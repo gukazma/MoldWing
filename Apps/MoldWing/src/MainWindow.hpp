@@ -8,8 +8,11 @@
 #include <QMainWindow>
 #include <QUndoStack>
 #include <QSettings>
+#include <QFutureWatcher>
+#include <vector>
 
 class QMenu;
+class QProgressDialog;
 class QAction;
 class QToolBar;
 class QDockWidget;
@@ -64,6 +67,9 @@ private slots:
     void onToggleWhiteModel(bool checked);
     void onToggleWireframe(bool checked);
 
+    // 异步加载完成回调
+    void onModelLoadFinished();
+
 private:
     void setupMenus();
     void setupToolBar();
@@ -84,6 +90,10 @@ private:
     QDockWidget* m_toolDock = nullptr;
     QDockWidget* m_propertyDock = nullptr;
     QDockWidget* m_historyDock = nullptr;
+    QDockWidget* m_layerDock = nullptr;  // M8: Layer tree dock
+
+    // M8: Layer tree widget
+    QTreeWidget* m_layerTree = nullptr;
 
     // Dock widget content
     QListWidget* m_toolList = nullptr;
@@ -131,6 +141,14 @@ private:
 
     // Current mesh data
     std::shared_ptr<MeshData> m_currentMesh;
+
+    // M8: Multi-model support
+    std::vector<std::shared_ptr<MeshData>> m_meshList;
+
+    // 异步加载状态
+    QFutureWatcher<std::shared_ptr<MeshData>> m_loadWatcher;
+    QProgressDialog* m_loadProgressDialog = nullptr;
+    QString m_loadingFilePath;
 };
 
 } // namespace MoldWing

@@ -21,6 +21,7 @@
 #include <QDockWidget>
 #include <QUndoView>
 #include <QListWidget>
+#include <QTreeWidget>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -29,6 +30,9 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QApplication>
+#include <QProgressDialog>
+#include <QtConcurrent>
+#include <QFutureWatcher>
 
 namespace MoldWing
 {
@@ -54,6 +58,10 @@ MainWindow::MainWindow(QWidget* parent)
     // Connect selection changes to update property panel
     connect(m_viewport3D->selectionSystem(), &SelectionSystem::selectionChanged,
             this, &MainWindow::onSelectionChanged);
+
+    // Connect async model loader
+    connect(&m_loadWatcher, &QFutureWatcher<std::shared_ptr<MeshData>>::finished,
+            this, &MainWindow::onModelLoadFinished);
 
     // Setup UI
     setupMenus();
@@ -220,6 +228,26 @@ void MainWindow::setupDockWidgets()
     connect(m_toolList, &QListWidget::currentRowChanged, this, &MainWindow::onToolSelected);
 
     addDockWidget(Qt::LeftDockWidgetArea, m_toolDock);
+
+    // =========================================================================
+    // Left side: Layer Dock (M8: Layer tree for multi-model management)
+    // =========================================================================
+    m_layerDock = new QDockWidget(tr("Layers"), this);
+    m_layerDock->setObjectName("LayerDock");
+    m_layerDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+
+    m_layerTree = new QTreeWidget(m_layerDock);
+    m_layerTree->setHeaderLabel(tr("Model Layers"));
+    m_layerTree->setMinimumWidth(150);
+    m_layerDock->setWidget(m_layerTree);
+
+    addDockWidget(Qt::LeftDockWidgetArea, m_layerDock);
+
+    // Tabify layer dock with tool dock (make them share the same area)
+    tabifyDockWidget(m_toolDock, m_layerDock);
+
+    // Make tool dock the visible tab by default
+    m_toolDock->raise();
 
     // =========================================================================
     // Right side: Property Dock
@@ -399,6 +427,7 @@ void MainWindow::setupDockWidgets()
     // =========================================================================
     m_viewMenu->addSeparator();
     m_viewMenu->addAction(m_toolDock->toggleViewAction());
+    m_viewMenu->addAction(m_layerDock->toggleViewAction());
     m_viewMenu->addAction(m_propertyDock->toggleViewAction());
     m_viewMenu->addAction(m_historyDock->toggleViewAction());
 
@@ -442,53 +471,32 @@ void MainWindow::onOpenFile()
         return;
 
     LOG_INFO("打开文件: {}", filePath.toStdString());
+
+    // Store file path for completion handler
+    m_loadingFilePath = filePath;
+
+    // Create progress dialog with busy indicator (0,0 range = infinite animation)
+    QFileInfo fileInfo(filePath);
+    m_loadProgressDialog = new QProgressDialog(
+        tr("Loading %1...").arg(fileInfo.fileName()),
+        QString(),  // No cancel button
+        0, 0,       // Infinite animation
+        this
+    );
+    m_loadProgressDialog->setWindowTitle(tr("Loading Model"));
+    m_loadProgressDialog->setWindowModality(Qt::WindowModal);
+    m_loadProgressDialog->setMinimumDuration(0);  // Show immediately
+    m_loadProgressDialog->show();
+
     statusBar()->showMessage(tr("Loading %1...").arg(filePath));
 
-    MeshLoader loader;
-    m_currentMesh = loader.load(filePath);
+    // Start async loading using QtConcurrent
+    QFuture<std::shared_ptr<MeshData>> future = QtConcurrent::run([filePath]() {
+        MeshLoader loader;
+        return loader.load(filePath);
+    });
 
-    if (!m_currentMesh)
-    {
-        MW_LOG_ERROR("加载模型失败: {}", loader.lastError().toStdString());
-        QMessageBox::critical(this, tr("Error"),
-            tr("Failed to load model:\n%1").arg(loader.lastError()));
-        statusBar()->showMessage(tr("Failed to load model"));
-        return;
-    }
-
-    LOG_INFO("模型加载成功: {} 顶点, {} 面",
-             m_currentMesh->vertexCount(), m_currentMesh->faceCount());
-
-    // Load mesh into renderer
-    if (!m_viewport3D->loadMesh(m_currentMesh))
-    {
-        MW_LOG_ERROR("加载网格到渲染器失败");
-        QMessageBox::critical(this, tr("Error"),
-            tr("Failed to load mesh into renderer"));
-        statusBar()->showMessage(tr("Failed to load mesh"));
-        return;
-    }
-
-    // Update window title
-    QFileInfo fileInfo(filePath);
-    setWindowTitle(tr("MoldWing - %1").arg(fileInfo.fileName()));
-
-    // Update property panel
-    m_propertyLabel->setText(tr("Model: %1\nVertices: %2\nFaces: %3")
-        .arg(fileInfo.fileName())
-        .arg(m_currentMesh->vertexCount())
-        .arg(m_currentMesh->faceCount()));
-
-    // Enable save and export actions
-    m_saveAction->setEnabled(true);
-    m_exportAction->setEnabled(true);
-
-    // Clear undo stack for new file
-    m_undoStack->clear();
-
-    statusBar()->showMessage(tr("Loaded: %1 vertices, %2 faces")
-        .arg(m_currentMesh->vertexCount())
-        .arg(m_currentMesh->faceCount()));
+    m_loadWatcher.setFuture(future);
 }
 
 void MainWindow::onSaveFile()
@@ -919,6 +927,80 @@ void MainWindow::onToggleWireframe(bool checked)
         statusBar()->showMessage(tr("Wireframe mode disabled"), 3000);
         LOG_INFO("线框模式：关闭");
     }
+}
+
+void MainWindow::onModelLoadFinished()
+{
+    // Close progress dialog
+    if (m_loadProgressDialog)
+    {
+        m_loadProgressDialog->close();
+        m_loadProgressDialog->deleteLater();
+        m_loadProgressDialog = nullptr;
+    }
+
+    // Get the loaded mesh from the future
+    m_currentMesh = m_loadWatcher.result();
+
+    if (!m_currentMesh)
+    {
+        MW_LOG_ERROR("加载模型失败");
+        QMessageBox::critical(this, tr("Error"),
+            tr("Failed to load model"));
+        statusBar()->showMessage(tr("Failed to load model"));
+        return;
+    }
+
+    QFileInfo fileInfo(m_loadingFilePath);
+
+    LOG_INFO("模型加载成功: {} 顶点, {} 面",
+             m_currentMesh->vertexCount(), m_currentMesh->faceCount());
+
+    // Load mesh into renderer
+    if (!m_viewport3D->loadMesh(m_currentMesh))
+    {
+        MW_LOG_ERROR("加载网格到渲染器失败");
+        QMessageBox::critical(this, tr("Error"),
+            tr("Failed to load mesh into renderer"));
+        statusBar()->showMessage(tr("Failed to load mesh"));
+        return;
+    }
+
+    // Update property panel
+    m_propertyLabel->setText(tr("Model: %1\nVertices: %2\nFaces: %3")
+        .arg(fileInfo.fileName())
+        .arg(m_currentMesh->vertexCount())
+        .arg(m_currentMesh->faceCount()));
+
+    // Enable save and export actions
+    m_saveAction->setEnabled(true);
+    m_exportAction->setEnabled(true);
+
+    // M8: Add to mesh list and layer tree (append mode)
+    m_meshList.push_back(m_currentMesh);
+
+    QTreeWidgetItem* layerItem = new QTreeWidgetItem(m_layerTree);
+    layerItem->setText(0, fileInfo.fileName());
+    layerItem->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
+    m_layerTree->addTopLevelItem(layerItem);
+    m_layerTree->setCurrentItem(layerItem);
+
+    // Update window title with model count
+    if (m_meshList.size() == 1)
+    {
+        setWindowTitle(tr("MoldWing - %1").arg(fileInfo.fileName()));
+    }
+    else
+    {
+        setWindowTitle(tr("MoldWing - %1 models loaded").arg(m_meshList.size()));
+    }
+
+    // Clear undo stack for new file
+    m_undoStack->clear();
+
+    statusBar()->showMessage(tr("Loaded: %1 vertices, %2 faces")
+        .arg(m_currentMesh->vertexCount())
+        .arg(m_currentMesh->faceCount()));
 }
 
 } // namespace MoldWing
