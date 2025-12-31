@@ -10,6 +10,8 @@
 #include <QSettings>
 #include <QFutureWatcher>
 #include <vector>
+#include <memory>
+#include <unordered_map>
 
 class QMenu;
 class QProgressDialog;
@@ -30,6 +32,7 @@ namespace MoldWing
 {
 
 class DiligentWidget;
+class TextureEditBuffer;
 struct MeshData;
 
 class MainWindow : public QMainWindow
@@ -76,6 +79,10 @@ private slots:
     // M8.1.1: 文件夹批量导入
     void onImportFolder();
     void loadNextPendingFile();
+
+    // B6: 异步批量导出
+    void exportNextModel();
+    void onExportFinished();
 
 private:
     void setupMenus();
@@ -163,6 +170,23 @@ private:
     int m_loadedCount = 0;           // 已加载计数
     int m_totalFilesToLoad = 0;      // 总文件数
     bool m_batchLoadMode = false;    // 批量加载模式标记
+
+    // B6: 异步导出状态
+    struct ExportTask
+    {
+        int meshIndex;
+        QString modelName;
+        QString filePath;
+        std::shared_ptr<MeshData> mesh;
+        std::unordered_map<int, std::shared_ptr<TextureEditBuffer>> editBuffers;
+    };
+    std::vector<ExportTask> m_exportTasks;
+    int m_exportedCount = 0;
+    int m_exportSuccessCount = 0;
+    QStringList m_exportFailedModels;
+    QString m_exportOutputDir;
+    QFutureWatcher<bool> m_exportWatcher;
+    QProgressDialog* m_exportProgressDialog = nullptr;
 };
 
 } // namespace MoldWing

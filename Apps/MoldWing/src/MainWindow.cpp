@@ -706,7 +706,7 @@ void MainWindow::onExportFile()
         return;
 
     std::vector<int> selectedIndices = dialog.getSelectedModelIndices();
-    QString outputDir = dialog.getOutputDirectory();
+    m_exportOutputDir = dialog.getOutputDirectory();
 
     if (selectedIndices.empty())
     {
@@ -715,86 +715,165 @@ void MainWindow::onExportFile()
         return;
     }
 
-    LOG_INFO("批量导出 {} 个模型到目录: {}", selectedIndices.size(), outputDir.toStdString());
+    LOG_INFO("批量导出 {} 个模型到目录: {}", selectedIndices.size(), m_exportOutputDir.toStdString());
 
-    // Create progress dialog
-    QProgressDialog progress(tr("Exporting models..."), tr("Cancel"), 0,
-                             static_cast<int>(selectedIndices.size()), this);
-    progress.setWindowModality(Qt::WindowModal);
-    progress.setMinimumDuration(0);
-
-    MeshExporter exporter;
-    int successCount = 0;
-    QStringList failedModels;
-
-    for (size_t i = 0; i < selectedIndices.size(); ++i)
+    // Build export task list
+    m_exportTasks.clear();
+    for (int meshIndex : selectedIndices)
     {
-        if (progress.wasCanceled())
-            break;
-
-        int meshIndex = selectedIndices[i];
         const MeshInstance* instance = m_viewport3D->getMeshInstance(meshIndex);
         if (!instance || !instance->mesh)
-        {
-            failedModels.append(tr("Model %1 (invalid)").arg(meshIndex));
             continue;
-        }
+
+        ExportTask task;
+        task.meshIndex = meshIndex;
+        task.mesh = instance->mesh;
 
         // Get model name for filename
-        QString modelName;
         if (!instance->mesh->sourcePath.empty())
         {
             QFileInfo fileInfo(QString::fromStdString(instance->mesh->sourcePath));
-            modelName = fileInfo.baseName();
+            task.modelName = fileInfo.baseName();
         }
         else
         {
-            modelName = QString("Model_%1").arg(meshIndex);
+            task.modelName = QString("Model_%1").arg(meshIndex);
         }
+        task.filePath = QDir(m_exportOutputDir).filePath(task.modelName + ".obj");
 
-        QString filePath = QDir(outputDir).filePath(modelName + ".obj");
-        progress.setLabelText(tr("Exporting: %1").arg(modelName));
-
-        // Build edit buffer map for this mesh
-        std::unordered_map<int, std::shared_ptr<TextureEditBuffer>> editBuffers;
+        // Copy edit buffers
         for (size_t texIdx = 0; texIdx < instance->editBuffers.size(); ++texIdx)
         {
             if (instance->editBuffers[texIdx] && instance->editBuffers[texIdx]->isValid())
             {
                 auto buffer = std::make_shared<TextureEditBuffer>();
                 *buffer = *instance->editBuffers[texIdx];
-                editBuffers[static_cast<int>(texIdx)] = buffer;
+                task.editBuffers[static_cast<int>(texIdx)] = buffer;
             }
         }
 
-        if (exporter.exportOBJ(filePath, *instance->mesh, editBuffers))
+        m_exportTasks.push_back(std::move(task));
+    }
+
+    if (m_exportTasks.empty())
+    {
+        QMessageBox::warning(this, tr("No Valid Models"),
+            tr("No valid models to export."));
+        return;
+    }
+
+    // Initialize export state
+    m_exportedCount = 0;
+    m_exportSuccessCount = 0;
+    m_exportFailedModels.clear();
+
+    // Create progress dialog (non-modal to allow async operation)
+    m_exportProgressDialog = new QProgressDialog(
+        tr("Exporting models..."),
+        tr("Cancel"),
+        0,
+        static_cast<int>(m_exportTasks.size()),
+        this
+    );
+    m_exportProgressDialog->setWindowTitle(tr("Exporting"));
+    m_exportProgressDialog->setWindowModality(Qt::WindowModal);
+    m_exportProgressDialog->setMinimumDuration(0);
+    m_exportProgressDialog->setValue(0);
+
+    // Connect watcher
+    connect(&m_exportWatcher, &QFutureWatcher<bool>::finished,
+            this, &MainWindow::onExportFinished);
+
+    // Start exporting
+    exportNextModel();
+}
+
+void MainWindow::exportNextModel()
+{
+    // Check if cancelled
+    if (m_exportProgressDialog && m_exportProgressDialog->wasCanceled())
+    {
+        m_exportProgressDialog->close();
+        delete m_exportProgressDialog;
+        m_exportProgressDialog = nullptr;
+        m_exportTasks.clear();
+
+        statusBar()->showMessage(tr("Export cancelled. Exported %1 models.").arg(m_exportSuccessCount), 5000);
+        return;
+    }
+
+    // Check if all done
+    if (m_exportedCount >= static_cast<int>(m_exportTasks.size()))
+    {
+        m_exportProgressDialog->close();
+        delete m_exportProgressDialog;
+        m_exportProgressDialog = nullptr;
+        m_exportTasks.clear();
+
+        // Show result
+        if (m_exportFailedModels.isEmpty())
         {
-            successCount++;
-            LOG_INFO("导出成功: {}", filePath.toStdString());
+            statusBar()->showMessage(tr("Exported %1 models").arg(m_exportSuccessCount), 5000);
+            QMessageBox::information(this, tr("Export Complete"),
+                tr("Successfully exported %1 model(s) to:\n%2").arg(m_exportSuccessCount).arg(m_exportOutputDir));
         }
         else
         {
-            failedModels.append(tr("%1 (%2)").arg(modelName, exporter.lastError()));
-            LOG_ERROR("导出失败: {} - {}", filePath.toStdString(), exporter.lastError().toStdString());
+            QString message = tr("Exported %1 model(s).\n\nFailed to export:\n%2")
+                .arg(m_exportSuccessCount)
+                .arg(m_exportFailedModels.join("\n"));
+            QMessageBox::warning(this, tr("Export Partially Complete"), message);
         }
-
-        progress.setValue(static_cast<int>(i + 1));
+        return;
     }
 
-    // Show result
-    if (failedModels.isEmpty())
+    // Get current task
+    const ExportTask& task = m_exportTasks[m_exportedCount];
+
+    // Update progress dialog
+    if (m_exportProgressDialog)
     {
-        statusBar()->showMessage(tr("Exported %1 models").arg(successCount), 5000);
-        QMessageBox::information(this, tr("Export Complete"),
-            tr("Successfully exported %1 model(s) to:\n%2").arg(successCount).arg(outputDir));
+        m_exportProgressDialog->setLabelText(tr("Exporting: %1 (%2/%3)")
+            .arg(task.modelName)
+            .arg(m_exportedCount + 1)
+            .arg(m_exportTasks.size()));
+    }
+
+    // Run export in background thread
+    QFuture<bool> future = QtConcurrent::run([task]() {
+        MeshExporter exporter;
+        return exporter.exportOBJ(task.filePath, *task.mesh, task.editBuffers);
+    });
+
+    m_exportWatcher.setFuture(future);
+}
+
+void MainWindow::onExportFinished()
+{
+    bool success = m_exportWatcher.result();
+    const ExportTask& task = m_exportTasks[m_exportedCount];
+
+    if (success)
+    {
+        m_exportSuccessCount++;
+        LOG_INFO("导出成功: {}", task.filePath.toStdString());
     }
     else
     {
-        QString message = tr("Exported %1 model(s).\n\nFailed to export:\n%2")
-            .arg(successCount)
-            .arg(failedModels.join("\n"));
-        QMessageBox::warning(this, tr("Export Partially Complete"), message);
+        m_exportFailedModels.append(task.modelName);
+        LOG_ERROR("导出失败: {}", task.filePath.toStdString());
     }
+
+    m_exportedCount++;
+
+    // Update progress
+    if (m_exportProgressDialog)
+    {
+        m_exportProgressDialog->setValue(m_exportedCount);
+    }
+
+    // Continue with next model
+    exportNextModel();
 }
 
 void MainWindow::onResetView()
