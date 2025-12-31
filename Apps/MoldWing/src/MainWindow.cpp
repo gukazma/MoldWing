@@ -34,6 +34,7 @@
 #include <QProgressDialog>
 #include <QtConcurrent>
 #include <QFutureWatcher>
+#include <QDirIterator>  // M8.1.1: 文件夹批量导入
 
 #include <map>
 
@@ -93,6 +94,11 @@ void MainWindow::setupMenus()
     m_openAction = m_fileMenu->addAction(tr("&Open..."));
     m_openAction->setShortcut(QKeySequence::Open);
     connect(m_openAction, &QAction::triggered, this, &MainWindow::onOpenFile);
+
+    // M8.1.1: Import Folder action
+    m_importFolderAction = m_fileMenu->addAction(tr("Import &Folder..."));
+    m_importFolderAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    connect(m_importFolderAction, &QAction::triggered, this, &MainWindow::onImportFolder);
 
     m_saveAction = m_fileMenu->addAction(tr("&Save"));
     m_saveAction->setShortcut(QKeySequence::Save);
@@ -504,6 +510,135 @@ void MainWindow::onOpenFile()
     statusBar()->showMessage(tr("Loading %1...").arg(filePath));
 
     // Start async loading using QtConcurrent
+    QFuture<std::shared_ptr<MeshData>> future = QtConcurrent::run([filePath]() {
+        MeshLoader loader;
+        return loader.load(filePath);
+    });
+
+    m_loadWatcher.setFuture(future);
+}
+
+// M8.1.1: 文件夹批量导入
+void MainWindow::onImportFolder()
+{
+    // 选择目录
+    QString dir = QFileDialog::getExistingDirectory(
+        this,
+        tr("Select Folder to Import"),
+        QString(),
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks
+    );
+
+    if (dir.isEmpty())
+        return;
+
+    LOG_INFO("批量导入目录: {}", dir.toStdString());
+
+    // 递归扫描所有 .obj 文件
+    m_pendingFiles.clear();
+    QDirIterator it(dir, QStringList() << "*.obj", QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext())
+    {
+        m_pendingFiles.append(it.next());
+    }
+
+    if (m_pendingFiles.isEmpty())
+    {
+        QMessageBox::information(this, tr("Import Folder"),
+            tr("No OBJ files found in the selected folder."));
+        return;
+    }
+
+    LOG_INFO("找到 {} 个 OBJ 文件", m_pendingFiles.size());
+
+    // 初始化批量加载状态
+    m_loadedCount = 0;
+    m_totalFilesToLoad = m_pendingFiles.size();
+    m_batchLoadMode = true;
+
+    // 创建进度对话框
+    m_loadProgressDialog = new QProgressDialog(
+        tr("Loading models: 0/%1").arg(m_totalFilesToLoad),
+        tr("Cancel"),
+        0, m_totalFilesToLoad,
+        this
+    );
+    m_loadProgressDialog->setWindowTitle(tr("Batch Import"));
+    m_loadProgressDialog->setWindowModality(Qt::WindowModal);
+    m_loadProgressDialog->setMinimumDuration(0);
+    m_loadProgressDialog->show();
+
+    // 连接取消按钮
+    connect(m_loadProgressDialog, &QProgressDialog::canceled, this, [this]() {
+        m_pendingFiles.clear();
+        m_batchLoadMode = false;
+        statusBar()->showMessage(tr("Batch import cancelled. Loaded %1 models.").arg(m_loadedCount));
+    });
+
+    // 开始加载第一个文件
+    loadNextPendingFile();
+}
+
+void MainWindow::loadNextPendingFile()
+{
+    if (m_pendingFiles.isEmpty())
+    {
+        // 批量加载完成
+        m_batchLoadMode = false;
+
+        if (m_loadProgressDialog)
+        {
+            m_loadProgressDialog->close();
+            m_loadProgressDialog->deleteLater();
+            m_loadProgressDialog = nullptr;
+        }
+
+        // 适配相机到所有模型
+        if (!m_meshList.empty())
+        {
+            BoundingBox combinedBounds;
+            combinedBounds.reset();
+            for (const auto& mesh : m_meshList)
+            {
+                if (mesh)
+                {
+                    const auto& b = mesh->bounds;
+                    combinedBounds.expand(b.min[0], b.min[1], b.min[2]);
+                    combinedBounds.expand(b.max[0], b.max[1], b.max[2]);
+                }
+            }
+            m_viewport3D->camera().fitToModel(
+                combinedBounds.min[0], combinedBounds.min[1], combinedBounds.min[2],
+                combinedBounds.max[0], combinedBounds.max[1], combinedBounds.max[2]);
+        }
+
+        LOG_INFO("批量导入完成，共加载 {} 个模型", m_loadedCount);
+        statusBar()->showMessage(tr("Batch import complete. Loaded %1 models.").arg(m_loadedCount));
+        setWindowTitle(tr("MoldWing - %1 models loaded").arg(m_meshList.size()));
+        return;
+    }
+
+    // 获取下一个文件
+    QString filePath = m_pendingFiles.takeFirst();
+    m_loadingFilePath = filePath;
+
+    // 更新进度对话框
+    if (m_loadProgressDialog)
+    {
+        m_loadProgressDialog->setLabelText(
+            tr("Loading: %1\n(%2/%3)")
+            .arg(QFileInfo(filePath).fileName())
+            .arg(m_loadedCount + 1)
+            .arg(m_totalFilesToLoad));
+        m_loadProgressDialog->setValue(m_loadedCount);
+    }
+
+    statusBar()->showMessage(tr("Loading %1 (%2/%3)...")
+        .arg(QFileInfo(filePath).fileName())
+        .arg(m_loadedCount + 1)
+        .arg(m_totalFilesToLoad));
+
+    // 开始异步加载
     QFuture<std::shared_ptr<MeshData>> future = QtConcurrent::run([filePath]() {
         MeshLoader loader;
         return loader.load(filePath);
@@ -975,8 +1110,8 @@ void MainWindow::onToggleWireframe(bool checked)
 
 void MainWindow::onModelLoadFinished()
 {
-    // Close progress dialog
-    if (m_loadProgressDialog)
+    // M8.1.1: 批量加载模式下不关闭进度对话框
+    if (!m_batchLoadMode && m_loadProgressDialog)
     {
         m_loadProgressDialog->close();
         m_loadProgressDialog->deleteLater();
@@ -988,7 +1123,16 @@ void MainWindow::onModelLoadFinished()
 
     if (!loadedMesh)
     {
-        MW_LOG_ERROR("加载模型失败");
+        MW_LOG_ERROR("加载模型失败: {}", m_loadingFilePath.toStdString());
+
+        // M8.1.1: 批量加载模式下继续加载下一个
+        if (m_batchLoadMode)
+        {
+            m_loadedCount++;  // 仍然计数（作为处理过的文件）
+            loadNextPendingFile();
+            return;
+        }
+
         QMessageBox::critical(this, tr("Error"),
             tr("Failed to load model"));
         statusBar()->showMessage(tr("Failed to load model"));
@@ -1006,6 +1150,15 @@ void MainWindow::onModelLoadFinished()
     if (meshIndex < 0)
     {
         MW_LOG_ERROR("添加网格到渲染器失败");
+
+        // M8.1.1: 批量加载模式下继续加载下一个
+        if (m_batchLoadMode)
+        {
+            m_loadedCount++;
+            loadNextPendingFile();
+            return;
+        }
+
         QMessageBox::critical(this, tr("Error"),
             tr("Failed to add mesh to renderer"));
         statusBar()->showMessage(tr("Failed to add mesh"));
@@ -1053,6 +1206,14 @@ void MainWindow::onModelLoadFinished()
     m_layerTree->addTopLevelItem(layerItem);
     m_layerTree->setCurrentItem(layerItem);
     m_layerTree->blockSignals(false);
+
+    // M8.1.1: 批量加载模式下不更新标题和相机，最后统一处理
+    if (m_batchLoadMode)
+    {
+        m_loadedCount++;
+        loadNextPendingFile();
+        return;
+    }
 
     // Update window title with model count
     if (m_meshList.size() == 1)

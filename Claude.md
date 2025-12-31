@@ -240,6 +240,102 @@ MoldWing/
 - ✅ 图层显示/隐藏切换
 - ✅ MeshInstance 架构 + 多模型渲染
 
+**M8.1.1 文件夹批量导入** ✅
+
+**功能目标**：一键导入倾斜摄影瓦片目录下的所有 OBJ 模型
+
+**数据结构示例**：
+```
+D:\datas\obj\baiguan\data\
+├── Tile_+031_+056\
+│   ├── Tile_+031_+056.obj
+│   ├── Tile_+031_+056.mtl
+│   ├── Tile_+031_+056_0.jpg
+│   └── Tile_+031_+056_1.jpg
+├── Tile_+032_+056\
+│   └── ...
+└── ...
+```
+
+**实现步骤**：
+
+| 步骤 | 功能 | 状态 |
+|------|------|------|
+| F1 | 菜单项 "Import Folder..." (Ctrl+Shift+O) | ✅ |
+| F2 | QFileDialog::getExistingDirectory 选择目录 | ✅ |
+| F3 | 递归扫描目录下所有 .obj 文件 (QDirIterator) | ✅ |
+| F4 | 批量异步加载 + 进度对话框 | ✅ |
+| F5 | 自动添加到图层树 + 相机适配 | ✅ |
+
+**技术方案**：
+```cpp
+// MainWindow 新增成员
+QAction* m_importFolderAction;
+QStringList m_pendingFiles;      // 待加载的文件列表
+int m_loadedCount = 0;           // 已加载计数
+QProgressDialog* m_batchProgressDialog;
+
+// 菜单项
+m_importFolderAction = m_fileMenu->addAction(tr("Import &Folder..."));
+m_importFolderAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+
+// 实现流程
+void MainWindow::onImportFolder() {
+    // 1. 选择目录
+    QString dir = QFileDialog::getExistingDirectory(this, tr("Select Folder"));
+
+    // 2. 递归扫描 .obj 文件
+    QDirIterator it(dir, {"*.obj"}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        m_pendingFiles.append(it.next());
+    }
+
+    // 3. 显示进度对话框
+    m_batchProgressDialog = new QProgressDialog(
+        tr("Loading %1 models...").arg(m_pendingFiles.size()),
+        tr("Cancel"), 0, m_pendingFiles.size(), this);
+
+    // 4. 开始加载第一个文件
+    loadNextPendingFile();
+}
+
+void MainWindow::loadNextPendingFile() {
+    if (m_pendingFiles.isEmpty()) {
+        // 全部完成，适配相机
+        m_viewport3D->camera().fitToScene(combinedBounds);
+        return;
+    }
+
+    QString file = m_pendingFiles.takeFirst();
+    // 复用现有的异步加载机制
+    QFuture<std::shared_ptr<MeshData>> future = QtConcurrent::run([file]() {
+        MeshLoader loader;
+        return loader.load(file);
+    });
+    m_loadWatcher.setFuture(future);
+}
+
+void MainWindow::onModelLoadComplete() {
+    // 添加到场景
+    m_viewport3D->addMesh(loadedMesh);
+    addLayerItem(fileName, meshIndex);
+
+    // 更新进度
+    m_loadedCount++;
+    m_batchProgressDialog->setValue(m_loadedCount);
+
+    // 加载下一个
+    loadNextPendingFile();
+}
+```
+
+**验收方式**：
+- 选择 `D:\datas\obj\baiguan\data` 目录
+- 自动加载所有瓦片 OBJ
+- 进度条显示加载进度
+- 图层树显示所有模型
+- 相机自动适配场景范围
+
 **M8.2 方案B实现步骤**
 
 | 步骤 | 功能 | 状态 | 验收方式 |
@@ -371,6 +467,7 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 | Ctrl+Z | 撤销 |
 | Ctrl+Y | 重做 |
 | Ctrl+O | 打开文件 |
+| Ctrl+Shift+O | 导入文件夹（批量导入） |
 | Ctrl+S | 保存 |
 | Ctrl+Shift+S | 导出（Export As） |
 | Ctrl+A | 全选 |

@@ -73,6 +73,10 @@ private slots:
     // M8: 图层可见性切换
     void onLayerVisibilityChanged(QTreeWidgetItem* item, int column);
 
+    // M8.1.1: 文件夹批量导入
+    void onImportFolder();
+    void loadNextPendingFile();
+
 private:
     void setupMenus();
     void setupToolBar();
@@ -121,6 +125,7 @@ private:
 
     // Actions
     QAction* m_openAction = nullptr;
+    QAction* m_importFolderAction = nullptr;  // M8.1.1: 文件夹批量导入
     QAction* m_saveAction = nullptr;
     QAction* m_exportAction = nullptr;  // M7.5: Export OBJ with textures
     QAction* m_exitAction = nullptr;
@@ -152,6 +157,12 @@ private:
     QFutureWatcher<std::shared_ptr<MeshData>> m_loadWatcher;
     QProgressDialog* m_loadProgressDialog = nullptr;
     QString m_loadingFilePath;
+
+    // M8.1.1: 批量导入状态
+    QStringList m_pendingFiles;      // 待加载的文件列表
+    int m_loadedCount = 0;           // 已加载计数
+    int m_totalFilesToLoad = 0;      // 总文件数
+    bool m_batchLoadMode = false;    // 批量加载模式标记
 };
 
 } // namespace MoldWing
