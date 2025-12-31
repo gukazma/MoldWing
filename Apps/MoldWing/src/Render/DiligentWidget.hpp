@@ -97,6 +97,8 @@ public:
     void setMeshVisible(int index, bool visible);
     bool isMeshVisible(int index) const;
     int meshCount() const { return static_cast<int>(m_meshInstances.size()); }
+    MeshInstance* getMeshInstance(int index);
+    const MeshInstance* getMeshInstance(int index) const;
     void clearAllMeshes();
 
     // Get camera for external access

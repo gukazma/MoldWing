@@ -4,6 +4,7 @@
  */
 
 #include "MainWindow.hpp"
+#include "ExportDialog.hpp"
 #include "Render/DiligentWidget.hpp"
 #include "Core/MeshData.hpp"
 #include "Core/Logger.hpp"
@@ -691,44 +692,108 @@ void MainWindow::onSaveFile()
 
 void MainWindow::onExportFile()
 {
-    if (!m_currentMesh)
-        return;
-
-    QString filePath = QFileDialog::getSaveFileName(
-        this,
-        tr("Export 3D Model"),
-        QString(),
-        tr("OBJ Files (*.obj);;All Files (*)")
-    );
-
-    if (filePath.isEmpty())
-        return;
-
-    LOG_INFO("导出文件: {}", filePath.toStdString());
-
-    // M7.5: Use MeshExporter to export with edited textures
-    MeshExporter exporter;
-
-    // Build edit buffer map (texture ID -> edit buffer)
-    std::unordered_map<int, std::shared_ptr<TextureEditBuffer>> editBuffers;
-    if (m_viewport3D && m_viewport3D->editBuffer() && m_viewport3D->editBuffer()->isValid())
+    // B6: Check if we have any models loaded
+    if (!m_viewport3D || m_viewport3D->meshCount() == 0)
     {
-        // Currently we only support single texture editing
-        auto buffer = std::make_shared<TextureEditBuffer>();
-        *buffer = *m_viewport3D->editBuffer();  // Copy the edit buffer
-        editBuffers[0] = buffer;
+        QMessageBox::warning(this, tr("No Models"),
+            tr("No models loaded. Please load models first."));
+        return;
     }
 
-    if (exporter.exportOBJ(filePath, *m_currentMesh, editBuffers))
+    // B6: Show export dialog for multi-model selection
+    ExportDialog dialog(m_viewport3D, this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    std::vector<int> selectedIndices = dialog.getSelectedModelIndices();
+    QString outputDir = dialog.getOutputDirectory();
+
+    if (selectedIndices.empty())
     {
-        statusBar()->showMessage(tr("Exported: %1").arg(filePath), 5000);
+        QMessageBox::warning(this, tr("No Selection"),
+            tr("Please select at least one model to export."));
+        return;
+    }
+
+    LOG_INFO("批量导出 {} 个模型到目录: {}", selectedIndices.size(), outputDir.toStdString());
+
+    // Create progress dialog
+    QProgressDialog progress(tr("Exporting models..."), tr("Cancel"), 0,
+                             static_cast<int>(selectedIndices.size()), this);
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(0);
+
+    MeshExporter exporter;
+    int successCount = 0;
+    QStringList failedModels;
+
+    for (size_t i = 0; i < selectedIndices.size(); ++i)
+    {
+        if (progress.wasCanceled())
+            break;
+
+        int meshIndex = selectedIndices[i];
+        const MeshInstance* instance = m_viewport3D->getMeshInstance(meshIndex);
+        if (!instance || !instance->mesh)
+        {
+            failedModels.append(tr("Model %1 (invalid)").arg(meshIndex));
+            continue;
+        }
+
+        // Get model name for filename
+        QString modelName;
+        if (!instance->mesh->sourcePath.empty())
+        {
+            QFileInfo fileInfo(QString::fromStdString(instance->mesh->sourcePath));
+            modelName = fileInfo.baseName();
+        }
+        else
+        {
+            modelName = QString("Model_%1").arg(meshIndex);
+        }
+
+        QString filePath = QDir(outputDir).filePath(modelName + ".obj");
+        progress.setLabelText(tr("Exporting: %1").arg(modelName));
+
+        // Build edit buffer map for this mesh
+        std::unordered_map<int, std::shared_ptr<TextureEditBuffer>> editBuffers;
+        for (size_t texIdx = 0; texIdx < instance->editBuffers.size(); ++texIdx)
+        {
+            if (instance->editBuffers[texIdx] && instance->editBuffers[texIdx]->isValid())
+            {
+                auto buffer = std::make_shared<TextureEditBuffer>();
+                *buffer = *instance->editBuffers[texIdx];
+                editBuffers[static_cast<int>(texIdx)] = buffer;
+            }
+        }
+
+        if (exporter.exportOBJ(filePath, *instance->mesh, editBuffers))
+        {
+            successCount++;
+            LOG_INFO("导出成功: {}", filePath.toStdString());
+        }
+        else
+        {
+            failedModels.append(tr("%1 (%2)").arg(modelName, exporter.lastError()));
+            LOG_ERROR("导出失败: {} - {}", filePath.toStdString(), exporter.lastError().toStdString());
+        }
+
+        progress.setValue(static_cast<int>(i + 1));
+    }
+
+    // Show result
+    if (failedModels.isEmpty())
+    {
+        statusBar()->showMessage(tr("Exported %1 models").arg(successCount), 5000);
         QMessageBox::information(this, tr("Export Complete"),
-            tr("Model exported successfully to:\n%1").arg(filePath));
+            tr("Successfully exported %1 model(s) to:\n%2").arg(successCount).arg(outputDir));
     }
     else
     {
-        QMessageBox::critical(this, tr("Error"),
-            tr("Failed to export file:\n%1").arg(exporter.lastError()));
+        QString message = tr("Exported %1 model(s).\n\nFailed to export:\n%2")
+            .arg(successCount)
+            .arg(failedModels.join("\n"));
+        QMessageBox::warning(this, tr("Export Partially Complete"), message);
     }
 }
 

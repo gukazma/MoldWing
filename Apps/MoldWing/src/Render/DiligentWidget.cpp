@@ -1959,6 +1959,20 @@ int DiligentWidget::addMesh(std::shared_ptr<MeshData> mesh)
     return index;
 }
 
+MeshInstance* DiligentWidget::getMeshInstance(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_meshInstances.size()))
+        return nullptr;
+    return &m_meshInstances[index];
+}
+
+const MeshInstance* DiligentWidget::getMeshInstance(int index) const
+{
+    if (index < 0 || index >= static_cast<int>(m_meshInstances.size()))
+        return nullptr;
+    return &m_meshInstances[index];
+}
+
 void DiligentWidget::clearAllMeshes()
 {
     m_meshInstances.clear();

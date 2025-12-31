@@ -89,6 +89,9 @@ struct MeshData
     std::vector<std::shared_ptr<TextureData>> textures;      // Loaded textures
     std::vector<uint32_t> faceMaterialIds;                   // Material ID per face
 
+    // Source file path (B6: for export filename)
+    std::string sourcePath;
+
     // Computed data
     BoundingBox bounds;
 

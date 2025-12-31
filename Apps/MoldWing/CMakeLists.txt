@@ -26,10 +26,12 @@ find_package(spdlog CONFIG REQUIRED)
 set(MAIN_SOURCES
     src/main.cpp
     src/MainWindow.cpp
+    src/ExportDialog.cpp
 )
 
 set(MAIN_HEADERS
     src/MainWindow.hpp
+    src/ExportDialog.hpp
 )
 
 set(RENDER_SOURCES

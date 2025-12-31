@@ -57,6 +57,9 @@ std::shared_ptr<MeshData> MeshLoader::loadOBJ(const QString& filePath)
 
     auto meshData = std::make_shared<MeshData>();
 
+    // B6: Store source file path for export
+    meshData->sourcePath = filePath.toStdString();
+
     // Get base directory for texture paths
     QFileInfo fileInfo(filePath);
     QString baseDir = fileInfo.absolutePath();
