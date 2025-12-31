@@ -15,6 +15,7 @@
 
 #include "Material.hpp"
 #include "TextureData.hpp"
+#include "CompositeId.hpp"  // M8: 复合面ID工具类
 
 namespace MoldWing
 {

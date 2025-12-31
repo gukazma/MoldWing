@@ -35,10 +35,25 @@ struct PickResult
 };
 
 /**
+ * @brief Per-mesh buffer data for multi-mesh picking (M8: Plan B)
+ */
+struct MeshPickBuffers
+{
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> vertexBuffer;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> indexBuffer;
+    uint32_t meshId = 0;        // Mesh ID (0-255)
+    uint32_t indexCount = 0;    // Number of indices
+    bool visible = true;        // Whether to include in picking
+};
+
+/**
  * @brief GPU-based face picking system
  *
  * Renders face IDs to an off-screen buffer and reads them back
  * to determine which faces are under the cursor or within a selection rectangle.
+ *
+ * M8 Plan B: Supports multi-mesh picking with composite face IDs
+ * (high 8 bits = meshId, low 24 bits = faceId)
  */
 class FacePicker
 {
@@ -63,8 +78,30 @@ public:
      * @brief Load mesh data for picking (creates vertex/index buffers)
      * @param mesh The mesh data
      * @return true if loading succeeded
+     * @note This is legacy single-mesh API. For multi-mesh, use addMesh/clearMeshes
      */
     bool loadMesh(const MeshData& mesh);
+
+    /**
+     * @brief Add a mesh for multi-mesh picking (M8: Plan B)
+     * @param mesh The mesh data
+     * @param meshId Unique mesh ID (0-255)
+     * @param visible Whether mesh is visible for picking
+     * @return true if loading succeeded
+     */
+    bool addMesh(const MeshData& mesh, uint32_t meshId, bool visible = true);
+
+    /**
+     * @brief Set mesh visibility for picking
+     * @param meshId Mesh ID to update
+     * @param visible Whether mesh should be picked
+     */
+    void setMeshVisible(uint32_t meshId, bool visible);
+
+    /**
+     * @brief Clear all meshes
+     */
+    void clearMeshes();
 
     /**
      * @brief Resize the picking render targets
@@ -129,9 +166,15 @@ public:
     /**
      * @brief Check if mesh is loaded
      */
-    bool hasMesh() const { return m_indexCount > 0; }
+    bool hasMesh() const { return m_indexCount > 0 || !m_meshBuffers.empty(); }
+
+    /**
+     * @brief Get mesh count (M8)
+     */
+    size_t meshCount() const { return m_meshBuffers.empty() ? (m_indexCount > 0 ? 1 : 0) : m_meshBuffers.size(); }
 
     // Invalid face ID constant (background/no hit)
+    // Note: This is now CompositeId::INVALID for consistency
     static constexpr uint32_t INVALID_FACE_ID = 0xFFFFFFFF;
 
 private:
@@ -154,10 +197,13 @@ private:
     Diligent::RefCntAutoPtr<Diligent::ITexture> m_pStagingTexture;      // For face ID readback
     Diligent::RefCntAutoPtr<Diligent::ITexture> m_pDepthStagingTexture; // For depth readback (T6.2.1)
 
-    // Buffers
+    // Legacy single-mesh buffers (for backward compatibility)
     Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pVertexBuffer;
     Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pIndexBuffer;
     Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pConstantBuffer;
+
+    // Multi-mesh buffers (M8: Plan B)
+    std::vector<MeshPickBuffers> m_meshBuffers;
 
     uint32_t m_width = 0;
     uint32_t m_height = 0;

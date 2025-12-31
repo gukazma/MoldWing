@@ -2,10 +2,12 @@
  *  MoldWing - Face Picker Implementation
  *  S2.1: GPU-based face ID picking
  *  T6.2.1: Extended pickPoint method
+ *  M8: Multi-mesh composite ID support (Plan B)
  */
 
 #include "FacePicker.hpp"
 #include "Core/Logger.hpp"
+#include "Core/CompositeId.hpp"
 
 #include <Graphics/GraphicsTools/interface/MapHelper.hpp>
 #include <algorithm>
@@ -20,10 +22,15 @@ namespace MoldWing
 namespace
 {
     // Vertex shader for ID rendering - just transforms vertices
+    // M8: Added g_MeshId for composite ID generation
     const char* IDVertexShader = R"(
 cbuffer Constants
 {
     row_major float4x4 g_WorldViewProj;
+    uint g_MeshId;      // M8: Mesh ID for composite face ID
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
 };
 
 struct VSInput
@@ -44,8 +51,18 @@ void main(in VSInput VSIn, out PSInput PSIn)
 }
 )";
 
-    // Pixel shader for ID rendering - uses SV_PrimitiveID for correct face ID
+    // Pixel shader for ID rendering - outputs composite face ID
+    // M8: Combines meshId (high 8 bits) with primitiveID (low 24 bits)
     const char* IDPixelShader = R"(
+cbuffer Constants
+{
+    row_major float4x4 g_WorldViewProj;
+    uint g_MeshId;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
+};
+
 struct PSInput
 {
     float4 Pos : SV_POSITION;
@@ -53,14 +70,19 @@ struct PSInput
 
 uint main(in PSInput PSIn, uint primitiveID : SV_PrimitiveID) : SV_Target
 {
-    return primitiveID;
+    // Composite ID: high 8 bits = meshId, low 24 bits = faceId
+    return (g_MeshId << 24) | (primitiveID & 0x00FFFFFF);
 }
 )";
 
-    // Constant buffer structure
+    // Constant buffer structure - M8: Added meshId
     struct Constants
     {
         float WorldViewProj[16];
+        uint32_t MeshId;        // M8: Mesh ID for composite face ID
+        uint32_t _pad0;
+        uint32_t _pad1;
+        uint32_t _pad2;
     };
 
     void MatrixMultiply(const float* a, const float* b, float* result)
@@ -178,10 +200,11 @@ bool FacePicker::createPipeline(IRenderDevice* pDevice)
     psoCI.pVS = pVS;
     psoCI.pPS = pPS;
 
-    // Shader resource variables
+    // Shader resource variables - bind to both VS and PS
     ShaderResourceVariableDesc varDesc[] =
     {
-        {SHADER_TYPE_VERTEX, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC}
+        {SHADER_TYPE_VERTEX, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC}
     };
     psoCI.PSODesc.ResourceLayout.Variables = varDesc;
     psoCI.PSODesc.ResourceLayout.NumVariables = _countof(varDesc);
@@ -207,8 +230,9 @@ bool FacePicker::createPipeline(IRenderDevice* pDevice)
         return false;
     }
 
-    // Bind constant buffer
+    // Bind constant buffer to both VS and PS
     m_pPSO->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants")->Set(m_pConstantBuffer);
+    m_pPSO->GetStaticVariableByName(SHADER_TYPE_PIXEL, "Constants")->Set(m_pConstantBuffer);
 
     // Create SRB
     m_pPSO->CreateShaderResourceBinding(&m_pSRB, true);
@@ -340,9 +364,107 @@ bool FacePicker::loadMesh(const MeshData& mesh)
     return true;
 }
 
+// M8: Add mesh for multi-mesh picking
+bool FacePicker::addMesh(const MeshData& mesh, uint32_t meshId, bool visible)
+{
+    if (!m_pDevice || mesh.vertices.empty())
+        return false;
+
+    if (meshId > CompositeId::MAX_MESH_ID)
+    {
+        MW_LOG_ERROR("FacePicker: meshId {} exceeds maximum {}", meshId, CompositeId::MAX_MESH_ID);
+        return false;
+    }
+
+    MeshPickBuffers buffers;
+    buffers.meshId = meshId;
+    buffers.visible = visible;
+
+    // Create vertex buffer
+    BufferDesc vbDesc;
+    vbDesc.Name = "FaceID Multi-Mesh VB";
+    vbDesc.Size = static_cast<Uint64>(mesh.vertices.size() * sizeof(Vertex));
+    vbDesc.Usage = USAGE_IMMUTABLE;
+    vbDesc.BindFlags = BIND_VERTEX_BUFFER;
+
+    BufferData vbData;
+    vbData.pData = mesh.vertices.data();
+    vbData.DataSize = vbDesc.Size;
+
+    m_pDevice->CreateBuffer(vbDesc, &vbData, &buffers.vertexBuffer);
+    if (!buffers.vertexBuffer)
+    {
+        MW_LOG_ERROR("FacePicker: Failed to create vertex buffer for mesh {}", meshId);
+        return false;
+    }
+
+    // Create index buffer
+    BufferDesc ibDesc;
+    ibDesc.Name = "FaceID Multi-Mesh IB";
+    ibDesc.Size = static_cast<Uint64>(mesh.indices.size() * sizeof(uint32_t));
+    ibDesc.Usage = USAGE_IMMUTABLE;
+    ibDesc.BindFlags = BIND_INDEX_BUFFER;
+
+    BufferData ibData;
+    ibData.pData = mesh.indices.data();
+    ibData.DataSize = ibDesc.Size;
+
+    m_pDevice->CreateBuffer(ibDesc, &ibData, &buffers.indexBuffer);
+    if (!buffers.indexBuffer)
+    {
+        MW_LOG_ERROR("FacePicker: Failed to create index buffer for mesh {}", meshId);
+        return false;
+    }
+
+    buffers.indexCount = static_cast<uint32_t>(mesh.indices.size());
+
+    // Check if mesh with this ID already exists
+    auto it = std::find_if(m_meshBuffers.begin(), m_meshBuffers.end(),
+        [meshId](const MeshPickBuffers& b) { return b.meshId == meshId; });
+
+    if (it != m_meshBuffers.end())
+    {
+        *it = std::move(buffers);  // Replace existing
+    }
+    else
+    {
+        m_meshBuffers.push_back(std::move(buffers));
+    }
+
+    m_bufferDirty = true;
+    LOG_DEBUG("FacePicker added mesh {}: {} indices", meshId, mesh.indices.size());
+    return true;
+}
+
+void FacePicker::setMeshVisible(uint32_t meshId, bool visible)
+{
+    auto it = std::find_if(m_meshBuffers.begin(), m_meshBuffers.end(),
+        [meshId](const MeshPickBuffers& b) { return b.meshId == meshId; });
+
+    if (it != m_meshBuffers.end())
+    {
+        if (it->visible != visible)
+        {
+            it->visible = visible;
+            m_bufferDirty = true;
+        }
+    }
+}
+
+void FacePicker::clearMeshes()
+{
+    m_meshBuffers.clear();
+    m_bufferDirty = true;
+    LOG_DEBUG("FacePicker cleared all meshes");
+}
+
 void FacePicker::renderIDBuffer(IDeviceContext* pContext, const OrbitCamera& camera)
 {
-    if (!m_initialized || !m_pVertexBuffer || !m_pIndexBuffer)
+    // M8: Support both legacy single-mesh and multi-mesh modes
+    bool hasLegacyMesh = m_pVertexBuffer && m_pIndexBuffer && m_indexCount > 0;
+    bool hasMultiMesh = !m_meshBuffers.empty();
+
+    if (!m_initialized || (!hasLegacyMesh && !hasMultiMesh))
         return;
 
     // Set render targets
@@ -360,46 +482,80 @@ void FacePicker::renderIDBuffer(IDeviceContext* pContext, const OrbitCamera& cam
     pContext->SetViewports(1, &vp, m_width, m_height);
 
     // Clear with invalid face ID (0xFFFFFFFF)
-    // Note: For R32_UINT, we need to use proper clear value
     const Uint32 clearValue[] = {INVALID_FACE_ID, 0, 0, 0};
     pContext->ClearRenderTarget(m_pIDRTV, reinterpret_cast<const float*>(clearValue),
                                  RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     pContext->ClearDepthStencil(m_pDepthDSV, CLEAR_DEPTH_FLAG, 1.0f, 0,
                                  RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-    // Update constant buffer
-    {
-        MapHelper<Constants> cb(pContext, m_pConstantBuffer, MAP_WRITE, MAP_FLAG_DISCARD);
+    // Prepare view-projection matrix (shared by all meshes)
+    float world[16];
+    MatrixIdentity(world);
 
-        // World matrix (identity)
-        float world[16];
-        MatrixIdentity(world);
+    float view[16], proj[16];
+    camera.getViewMatrix(view);
+    camera.getProjectionMatrix(proj);
 
-        // View and projection matrices
-        float view[16], proj[16];
-        camera.getViewMatrix(view);
-        camera.getProjectionMatrix(proj);
+    float viewProj[16];
+    MatrixMultiply(view, proj, viewProj);
 
-        // WorldViewProj = World * View * Proj
-        float viewProj[16];
-        MatrixMultiply(view, proj, viewProj);
-        MatrixMultiply(world, viewProj, cb->WorldViewProj);
-    }
+    float worldViewProj[16];
+    MatrixMultiply(world, viewProj, worldViewProj);
 
-    // Set pipeline and draw
+    // Set pipeline
     pContext->SetPipelineState(m_pPSO);
-    pContext->CommitShaderResources(m_pSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-    IBuffer* pBuffs[] = {m_pVertexBuffer};
-    pContext->SetVertexBuffers(0, 1, pBuffs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-                                SET_VERTEX_BUFFERS_FLAG_RESET);
-    pContext->SetIndexBuffer(m_pIndexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    // M8: Render multi-mesh mode
+    if (hasMultiMesh)
+    {
+        for (const auto& meshBuf : m_meshBuffers)
+        {
+            if (!meshBuf.visible || meshBuf.indexCount == 0)
+                continue;
 
-    DrawIndexedAttribs drawAttrs;
-    drawAttrs.IndexType = VT_UINT32;
-    drawAttrs.NumIndices = m_indexCount;
-    drawAttrs.Flags = DRAW_FLAG_VERIFY_ALL;
-    pContext->DrawIndexed(drawAttrs);
+            // Update constant buffer with mesh ID
+            {
+                MapHelper<Constants> cb(pContext, m_pConstantBuffer, MAP_WRITE, MAP_FLAG_DISCARD);
+                std::memcpy(cb->WorldViewProj, worldViewProj, sizeof(worldViewProj));
+                cb->MeshId = meshBuf.meshId;
+            }
+
+            pContext->CommitShaderResources(m_pSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+            IBuffer* pBuffs[] = {meshBuf.vertexBuffer};
+            pContext->SetVertexBuffers(0, 1, pBuffs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                        SET_VERTEX_BUFFERS_FLAG_RESET);
+            pContext->SetIndexBuffer(meshBuf.indexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+            DrawIndexedAttribs drawAttrs;
+            drawAttrs.IndexType = VT_UINT32;
+            drawAttrs.NumIndices = meshBuf.indexCount;
+            drawAttrs.Flags = DRAW_FLAG_VERIFY_ALL;
+            pContext->DrawIndexed(drawAttrs);
+        }
+    }
+    else if (hasLegacyMesh)
+    {
+        // Legacy single-mesh mode (meshId = 0)
+        {
+            MapHelper<Constants> cb(pContext, m_pConstantBuffer, MAP_WRITE, MAP_FLAG_DISCARD);
+            std::memcpy(cb->WorldViewProj, worldViewProj, sizeof(worldViewProj));
+            cb->MeshId = 0;  // Legacy mode uses meshId 0
+        }
+
+        pContext->CommitShaderResources(m_pSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        IBuffer* pBuffs[] = {m_pVertexBuffer};
+        pContext->SetVertexBuffers(0, 1, pBuffs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                    SET_VERTEX_BUFFERS_FLAG_RESET);
+        pContext->SetIndexBuffer(m_pIndexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        DrawIndexedAttribs drawAttrs;
+        drawAttrs.IndexType = VT_UINT32;
+        drawAttrs.NumIndices = m_indexCount;
+        drawAttrs.Flags = DRAW_FLAG_VERIFY_ALL;
+        pContext->DrawIndexed(drawAttrs);
+    }
 
     m_bufferDirty = false;
 }

@@ -7,6 +7,7 @@
 #include "Render/DiligentWidget.hpp"
 #include "Core/MeshData.hpp"
 #include "Core/Logger.hpp"
+#include "Core/CompositeId.hpp"  // M8: For Mesh:Face display
 #include "IO/MeshLoader.hpp"
 #include "IO/MeshExporter.hpp"
 #include "Selection/SelectionSystem.hpp"
@@ -373,14 +374,20 @@ void MainWindow::setupDockWidgets()
     });
 
     // Step 1: Connect texture coordinate picked signal to status bar
+    // M8: Display Mesh:Face format for composite IDs
     connect(m_viewport3D, &DiligentWidget::textureCoordPicked,
-            this, [this](float u, float v, int texX, int texY, uint32_t faceId) {
+            this, [this](float u, float v, int texX, int texY, uint32_t compositeId) {
+        // M8: Decode composite ID to Mesh:Face format
+        uint32_t meshId = CompositeId::meshId(compositeId);
+        uint32_t faceId = CompositeId::faceId(compositeId);
+
         statusBar()->showMessage(
-            tr("UV: (%1, %2) | Pixel: (%3, %4) | Face: %5")
+            tr("UV: (%1, %2) | Pixel: (%3, %4) | Mesh:Face: %5:%6")
                 .arg(u, 0, 'f', 3)
                 .arg(v, 0, 'f', 3)
                 .arg(texX)
                 .arg(texY)
+                .arg(meshId)
                 .arg(faceId),
             3000);  // Show for 3 seconds
     });

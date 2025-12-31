@@ -6,6 +6,7 @@
 #include "DiligentWidget.hpp"
 #include "Core/Logger.hpp"
 #include "Core/RayIntersection.hpp"
+#include "Core/CompositeId.hpp"
 
 #include <QResizeEvent>
 #include <QContextMenuEvent>
@@ -476,11 +477,16 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
             int x = static_cast<int>(event->pos().x() * dpr);
             int y = static_cast<int>(event->pos().y() * dpr);
 
-            uint32_t faceId = m_facePicker.readFaceID(m_pContext, x, y);
+            uint32_t compositeId = m_facePicker.readFaceID(m_pContext, x, y);
 
-            if (faceId != FacePicker::INVALID_FACE_ID)
+            if (compositeId != FacePicker::INVALID_FACE_ID)
             {
+                // M8: Extract meshId and faceId from composite ID
+                uint32_t meshId = CompositeId::meshId(compositeId);
+                uint32_t faceId = CompositeId::faceId(compositeId);
+
                 // Use ScreenToTextureMapper to get UV coordinates
+                // Note: Pass the actual faceId (not composite) to texture mapper
                 auto result = m_textureMapper.mapScreenToTexture(
                     faceId,
                     event->pos().x(), event->pos().y(),
@@ -489,7 +495,7 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
 
                 if (result.valid)
                 {
-                    emit textureCoordPicked(result.u, result.v, result.texX, result.texY, faceId);
+                    emit textureCoordPicked(result.u, result.v, result.texX, result.texY, compositeId);
 
                     // Step 4: In TextureEdit mode, Alt+click sets clone source
                     if (m_interactionMode == InteractionMode::TextureEdit)
@@ -539,7 +545,7 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
                 }
                 else
                 {
-                    LOG_DEBUG("Texture mapping failed for face {}", faceId);
+                    LOG_DEBUG("Texture mapping failed for mesh {} face {}", meshId, faceId);
                 }
             }
             else
@@ -1707,6 +1713,13 @@ void DiligentWidget::setMeshVisible(int index, bool visible)
         if (m_meshInstances[index].visible != visible)
         {
             m_meshInstances[index].visible = visible;
+
+            // M8: Sync visibility to FacePicker
+            if (m_facePicker.isInitialized())
+            {
+                m_facePicker.setMeshVisible(static_cast<uint32_t>(index), visible);
+            }
+
             LOG_DEBUG("Mesh {} visibility set to: {}", index, visible);
             update();  // Trigger repaint
         }
@@ -1751,6 +1764,12 @@ int DiligentWidget::addMesh(std::shared_ptr<MeshData> mesh)
         return -1;
     }
 
+    // M8: Add to FacePicker for multi-mesh picking
+    if (m_facePicker.isInitialized())
+    {
+        m_facePicker.addMesh(*mesh, static_cast<uint32_t>(instance.id), instance.visible);
+    }
+
     int index = instance.id;
     m_meshInstances.push_back(std::move(instance));
 
@@ -1774,10 +1793,10 @@ void DiligentWidget::clearAllMeshes()
         m_selectionSystem->setFaceCount(0);
     }
 
-    // Clear face picker
+    // M8: Clear face picker meshes
     if (m_facePicker.isInitialized())
     {
-        // FacePicker will be updated when new mesh is loaded
+        m_facePicker.clearMeshes();
     }
 
     LOG_INFO("All meshes cleared");

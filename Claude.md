@@ -244,12 +244,16 @@ MoldWing/
 
 | 步骤 | 功能 | 状态 | 验收方式 |
 |------|------|------|---------|
-| B1 | CompositeId 工具类 | ⏳ | 单元测试通过 |
-| B2 | 多模型面拾取 | ⏳ | Alt+点击显示 Mesh:Face |
+| B1 | CompositeId 工具类 | ✅ | 编译时 static_assert 通过 |
+| B2 | 多模型面拾取 | ✅ | Alt+点击显示 Mesh:Face |
 | B3 | 跨模型框选 | ⏳ | 框选多模型都被选中 |
 | B4 | 跨模型选择渲染 | ⏳ | 多模型高亮显示 |
 | B5 | 多纹理编辑缓冲区 | ⏳ | 跨模型克隆生效 |
 | B6 | 模型选择导出 | ⏳ | 勾选导出正确 |
+
+**已完成**：
+- ✅ B1: CompositeId 工具类（Core/CompositeId.hpp）- 编码/解码/验证函数
+- ✅ B2: FacePicker 多模型复合ID渲染 - 着色器输出 (meshId << 24) | faceId
 
 **实现依赖**：B1 → B2 → B3 → B4 → B5 → B6
 
