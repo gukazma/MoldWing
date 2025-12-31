@@ -48,8 +48,35 @@ struct MeshInstance
 {
     std::shared_ptr<MeshData> mesh;
     std::unique_ptr<MeshRenderer> renderer;
+    // B5: Per-mesh texture edit buffers (one per texture in mesh)
+    std::vector<std::unique_ptr<TextureEditBuffer>> editBuffers;
     bool visible = true;
     int id = -1;
+
+    // B5: Create edit buffers for all textures in this mesh
+    void createEditBuffers()
+    {
+        editBuffers.clear();
+        if (!mesh) return;
+
+        for (size_t i = 0; i < mesh->textures.size(); ++i)
+        {
+            auto buffer = std::make_unique<TextureEditBuffer>();
+            if (mesh->textures[i] && mesh->textures[i]->isValid())
+            {
+                buffer->initialize(*mesh->textures[i]);
+            }
+            editBuffers.push_back(std::move(buffer));
+        }
+    }
+
+    // B5: Get edit buffer for specific texture index
+    TextureEditBuffer* getEditBuffer(int textureIndex = 0)
+    {
+        if (textureIndex < 0 || textureIndex >= static_cast<int>(editBuffers.size()))
+            return nullptr;
+        return editBuffers[textureIndex].get();
+    }
 };
 
 class DiligentWidget : public QWidget
@@ -195,7 +222,7 @@ private:
     void beginTexturePaint(const QPoint& pos);
     void updateTexturePaint(const QPoint& pos);
     void endTexturePaint();
-    void paintBrushAtPosition(int texX, int texY);
+    void paintBrushAtPosition(int destMeshId, int texX, int texY);
 
     SelectionOp getSelectionOp() const;
 
@@ -277,10 +304,12 @@ private:
 
     // Step 4: Clone stamp state
     bool m_cloneSourceSet = false;     // True if clone source is set
+    int m_cloneSourceMeshId = -1;      // B5: Clone source mesh ID (from composite ID)
     int m_cloneSourceTexX = 0;         // Clone source texture X
     int m_cloneSourceTexY = 0;         // Clone source texture Y
     int m_cloneFirstDestTexX = -1;     // First destination X (for offset calculation)
     int m_cloneFirstDestTexY = -1;     // First destination Y
+    int m_cloneFirstDestMeshId = -1;   // B5: First destination mesh ID
 
     // Step 6: Current texture edit command for undo
     TextureEditCommand* m_currentEditCommand = nullptr;

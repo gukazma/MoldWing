@@ -503,14 +503,16 @@ void DiligentWidget::mousePressEvent(QMouseEvent* event)
                     // Step 4: In TextureEdit mode, Alt+click sets clone source
                     if (m_interactionMode == InteractionMode::TextureEdit)
                     {
+                        m_cloneSourceMeshId = static_cast<int>(meshId);  // B5: Record source mesh
                         m_cloneSourceTexX = result.texX;
                         m_cloneSourceTexY = result.texY;
                         m_cloneSourceSet = true;
                         m_cloneFirstDestTexX = -1;  // Reset first dest for new source
                         m_cloneFirstDestTexY = -1;
+                        m_cloneFirstDestMeshId = -1;  // B5: Reset first dest mesh
 
                         emit cloneSourceSet(result.texX, result.texY);
-                        LOG_DEBUG("Clone source set at texture ({}, {})", result.texX, result.texY);
+                        LOG_DEBUG("Clone source set at mesh {} texture ({}, {})", meshId, result.texX, result.texY);
                     }
                     else
                     {
@@ -1583,16 +1585,9 @@ void DiligentWidget::performLinkSelect(const QPoint& pos)
 
 void DiligentWidget::beginTexturePaint(const QPoint& pos)
 {
-    if (!m_editBuffer || !m_editBuffer->isValid())
-        return;
-
+    // B5: No longer check m_editBuffer here, will use per-mesh buffers
     m_texturePainting = true;
-
-    // Step 6: Create undo command for this stroke
-    if (m_undoStack)
-    {
-        m_currentEditCommand = new TextureEditCommand(m_editBuffer.get(), 0);
-    }
+    m_currentEditCommand = nullptr;  // B5: Will be created in first updateTexturePaint
 
     // Paint at initial position
     updateTexturePaint(pos);
@@ -1602,7 +1597,7 @@ void DiligentWidget::beginTexturePaint(const QPoint& pos)
 
 void DiligentWidget::updateTexturePaint(const QPoint& pos)
 {
-    if (!m_texturePainting || !m_editBuffer || !m_editBuffer->isValid())
+    if (!m_texturePainting)
         return;
 
     if (!m_facePicker.isInitialized() || !m_facePicker.hasMesh())
@@ -1616,10 +1611,35 @@ void DiligentWidget::updateTexturePaint(const QPoint& pos)
     int x = static_cast<int>(pos.x() * dpr);
     int y = static_cast<int>(pos.y() * dpr);
 
-    uint32_t faceId = m_facePicker.readFaceID(m_pContext, x, y);
+    uint32_t compositeId = m_facePicker.readFaceID(m_pContext, x, y);
 
-    if (faceId == FacePicker::INVALID_FACE_ID)
+    if (compositeId == FacePicker::INVALID_FACE_ID)
         return;
+
+    // B5: Extract meshId and faceId from composite ID
+    uint32_t meshId = CompositeId::meshId(compositeId);
+    uint32_t faceId = CompositeId::faceId(compositeId);
+
+    // B5: Get the correct mesh instance
+    if (meshId >= m_meshInstances.size())
+        return;
+
+    MeshInstance& instance = m_meshInstances[meshId];
+    if (!instance.mesh || instance.editBuffers.empty())
+        return;
+
+    TextureEditBuffer* editBuffer = instance.getEditBuffer(0);
+    if (!editBuffer || !editBuffer->isValid())
+        return;
+
+    // B5: Create undo command on first valid paint (now we know which mesh)
+    if (!m_currentEditCommand && m_undoStack)
+    {
+        m_currentEditCommand = new TextureEditCommand(editBuffer, 0);
+    }
+
+    // B5: Set up texture mapper with correct mesh data
+    m_textureMapper.setMesh(instance.mesh);
 
     // Map screen position to texture coordinates
     auto result = m_textureMapper.mapScreenToTexture(
@@ -1631,12 +1651,12 @@ void DiligentWidget::updateTexturePaint(const QPoint& pos)
     if (!result.valid)
         return;
 
-    // Paint brush at texture position
-    paintBrushAtPosition(result.texX, result.texY);
+    // Paint brush at texture position (with mesh ID for cross-model clone)
+    paintBrushAtPosition(static_cast<int>(meshId), result.texX, result.texY);
 
-    // Update GPU texture
-    m_meshRenderer.updateTextureFromBuffer(m_pContext, 0, *m_editBuffer);
-    m_editBuffer->clearDirty();
+    // Update GPU texture for this mesh
+    instance.renderer->updateTextureFromBuffer(m_pContext, 0, *editBuffer);
+    editBuffer->clearDirty();
 }
 
 void DiligentWidget::endTexturePaint()
@@ -1646,6 +1666,7 @@ void DiligentWidget::endTexturePaint()
     // Reset first destination for next stroke
     m_cloneFirstDestTexX = -1;
     m_cloneFirstDestTexY = -1;
+    m_cloneFirstDestMeshId = -1;  // B5: Reset first dest mesh
 
     // Step 6: Finalize and push undo command
     if (m_currentEditCommand && m_undoStack)
@@ -1666,9 +1687,15 @@ void DiligentWidget::endTexturePaint()
     LOG_DEBUG("Texture painting ended");
 }
 
-void DiligentWidget::paintBrushAtPosition(int texX, int texY)
+void DiligentWidget::paintBrushAtPosition(int destMeshId, int texX, int texY)
 {
-    if (!m_editBuffer || !m_editBuffer->isValid())
+    // B5: Get destination mesh's edit buffer
+    if (destMeshId < 0 || destMeshId >= static_cast<int>(m_meshInstances.size()))
+        return;
+
+    MeshInstance& destInstance = m_meshInstances[destMeshId];
+    TextureEditBuffer* destBuffer = destInstance.getEditBuffer(0);
+    if (!destBuffer || !destBuffer->isValid())
         return;
 
     const int radius = m_textureBrushRadius;
@@ -1677,11 +1704,21 @@ void DiligentWidget::paintBrushAtPosition(int texX, int texY)
     // Step 5: Clone stamp mode - copy from source with offset
     if (m_cloneSourceSet)
     {
+        // B5: Get source mesh's edit buffer
+        if (m_cloneSourceMeshId < 0 || m_cloneSourceMeshId >= static_cast<int>(m_meshInstances.size()))
+            return;
+
+        MeshInstance& srcInstance = m_meshInstances[m_cloneSourceMeshId];
+        TextureEditBuffer* srcBuffer = srcInstance.getEditBuffer(0);
+        if (!srcBuffer || !srcBuffer->isValid())
+            return;
+
         // Calculate offset on first paint
         if (m_cloneFirstDestTexX < 0)
         {
             m_cloneFirstDestTexX = texX;
             m_cloneFirstDestTexY = texY;
+            m_cloneFirstDestMeshId = destMeshId;  // B5: Record first dest mesh
         }
 
         // Calculate source-destination offset
@@ -1702,19 +1739,19 @@ void DiligentWidget::paintBrushAtPosition(int texX, int texY)
                 int srcX = destX + offsetX;
                 int srcY = destY + offsetY;
 
-                // Boundary check for both source and destination
-                if (destX >= 0 && destX < m_editBuffer->width() &&
-                    destY >= 0 && destY < m_editBuffer->height() &&
-                    srcX >= 0 && srcX < m_editBuffer->width() &&
-                    srcY >= 0 && srcY < m_editBuffer->height())
+                // Boundary check for both source and destination buffers
+                if (destX >= 0 && destX < destBuffer->width() &&
+                    destY >= 0 && destY < destBuffer->height() &&
+                    srcX >= 0 && srcX < srcBuffer->width() &&
+                    srcY >= 0 && srcY < srcBuffer->height())
                 {
                     // Read old pixel for undo
                     uint8_t oldR, oldG, oldB, oldA;
-                    m_editBuffer->getPixel(destX, destY, oldR, oldG, oldB, oldA);
+                    destBuffer->getPixel(destX, destY, oldR, oldG, oldB, oldA);
 
-                    // Read from original texture (not the edited one)
+                    // Read from source's original texture (not the edited one)
                     uint8_t newR, newG, newB, newA;
-                    m_editBuffer->getOriginalPixel(srcX, srcY, newR, newG, newB, newA);
+                    srcBuffer->getOriginalPixel(srcX, srcY, newR, newG, newB, newA);
 
                     // Only record if pixel actually changes
                     if (oldR != newR || oldG != newG || oldB != newB || oldA != newA)
@@ -1727,7 +1764,7 @@ void DiligentWidget::paintBrushAtPosition(int texX, int texY)
                                 newR, newG, newB, newA);
                         }
 
-                        m_editBuffer->setPixel(destX, destY, newR, newG, newB, newA);
+                        destBuffer->setPixel(destX, destY, newR, newG, newB, newA);
                     }
                 }
             }
@@ -1748,12 +1785,12 @@ void DiligentWidget::paintBrushAtPosition(int texX, int texY)
                 int py = texY + dy;
 
                 // Boundary check
-                if (px >= 0 && px < m_editBuffer->width() &&
-                    py >= 0 && py < m_editBuffer->height())
+                if (px >= 0 && px < destBuffer->width() &&
+                    py >= 0 && py < destBuffer->height())
                 {
                     // Read old pixel for undo
                     uint8_t oldR, oldG, oldB, oldA;
-                    m_editBuffer->getPixel(px, py, oldR, oldG, oldB, oldA);
+                    destBuffer->getPixel(px, py, oldR, oldG, oldB, oldA);
 
                     const uint8_t newR = 255, newG = 0, newB = 0, newA = 255;
 
@@ -1768,7 +1805,7 @@ void DiligentWidget::paintBrushAtPosition(int texX, int texY)
                                 newR, newG, newB, newA);
                         }
 
-                        m_editBuffer->setPixel(px, py, newR, newG, newB, newA);
+                        destBuffer->setPixel(px, py, newR, newG, newB, newA);
                     }
                 }
             }
@@ -1791,13 +1828,31 @@ void DiligentWidget::setUndoStack(QUndoStack* stack)
 
 void DiligentWidget::syncTextureToGPU()
 {
-    // Update GPU texture from edit buffer after undo/redo
-    if (m_editBuffer && m_editBuffer->isDirty() && m_initialized && m_pContext)
+    // B5: Update GPU textures for all meshes after undo/redo
+    if (!m_initialized || !m_pContext)
+        return;
+
+    for (auto& instance : m_meshInstances)
+    {
+        for (size_t texIdx = 0; texIdx < instance.editBuffers.size(); ++texIdx)
+        {
+            TextureEditBuffer* buffer = instance.editBuffers[texIdx].get();
+            if (buffer && buffer->isDirty())
+            {
+                instance.renderer->updateTextureFromBuffer(m_pContext, static_cast<int>(texIdx), *buffer);
+                buffer->clearDirty();
+            }
+        }
+    }
+
+    // Legacy: also sync single editBuffer if present
+    if (m_editBuffer && m_editBuffer->isDirty())
     {
         m_meshRenderer.updateTextureFromBuffer(m_pContext, 0, *m_editBuffer);
         m_editBuffer->clearDirty();
-        LOG_DEBUG("Synced texture to GPU after undo/redo");
     }
+
+    LOG_DEBUG("Synced textures to GPU after undo/redo");
 }
 
 bool DiligentWidget::saveTexture(const QString& filePath)
@@ -1891,6 +1946,9 @@ int DiligentWidget::addMesh(std::shared_ptr<MeshData> mesh)
     {
         m_selectionRenderer.addMesh(*mesh, static_cast<uint32_t>(instance.id));
     }
+
+    // B5: Create edit buffers for texture editing
+    instance.createEditBuffers();
 
     int index = instance.id;
     m_meshInstances.push_back(std::move(instance));

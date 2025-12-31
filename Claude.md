@@ -248,7 +248,7 @@ MoldWing/
 | B2 | 多模型面拾取 | ✅ | Alt+点击显示 Mesh:Face |
 | B3 | 跨模型框选 | ✅ | 框选多模型都被选中 |
 | B4 | 跨模型选择渲染 | ✅ | 多模型高亮显示 |
-| B5 | 多纹理编辑缓冲区 | ⏳ | 跨模型克隆生效 |
+| B5 | 多纹理编辑缓冲区 | ✅ | 跨模型克隆生效 |
 | B6 | 模型选择导出 | ⏳ | 勾选导出正确 |
 
 **已完成**：
@@ -256,6 +256,12 @@ MoldWing/
 - ✅ B2: FacePicker 多模型复合ID渲染 - 着色器输出 (meshId << 24) | faceId
 - ✅ B3: 跨模型框选 - SelectionSystem 存储复合ID + 状态栏显示跨模型统计
 - ✅ B4: SelectionRenderer 多模型高亮 - addMesh/clearMeshes + 解码复合ID渲染
+- ✅ B5: 多纹理编辑缓冲区 - MeshInstance.editBuffers + 跨模型克隆图章
+  - MeshInstance 扩展：每个模型持有自己的 editBuffers 向量
+  - 克隆源记录 meshId：m_cloneSourceMeshId + m_cloneFirstDestMeshId
+  - updateTexturePaint：解码复合ID，使用正确的 mesh 和 editBuffer
+  - paintBrushAtPosition：支持跨模型像素复制（源和目标可在不同模型）
+  - syncTextureToGPU：同步所有模型的纹理到 GPU
 - ✅ 所有选择模式多模型支持：
   - 框选：直接使用 FacePicker 返回的复合ID
   - 刷选：直接使用 FacePicker 返回的复合ID
