@@ -556,8 +556,8 @@ Apps/MoldWing/
 | **M6** | 纹理渲染+编辑框架 | 纹理加载渲染、屏幕-纹理映射 | 纹理正确显示 |
 | **M7** | 克隆图章 | 克隆像素绘制 | Alt+点击设置源，拖拽克隆 |
 | **M7.5** | OBJ带纹理导出 | 导出编辑后的模型和纹理 | 导出OBJ+MTL+纹理 |
-| **M8** | 图层树与多模型管理 | 多OBJ加载、图层显示/隐藏 | 图层树显示所有模型 |
-| **M9** | 选择性导出 | 导出对话框勾选列表 | 可选择导出哪些模型 |
+| **M8** | 多模型选择与编辑 | 跨模型面选择、纹理编辑 | 框选多模型、跨模型克隆 |
+| **M9** | 模型选择导出 | 导出对话框勾选模型列表 | 可选择导出哪些模型 |
 | **M10** | OSGB标准瓦片导出 | OBJ→OSGB转换 | 生成标准瓦片目录 |
 | **M11** | 橡皮擦 | 恢复原始纹理 | 橡皮擦擦除编辑内容 |
 | **M12** | 颜色调整 | 亮度/对比度/色相调整 | 选区内调整 |
@@ -565,7 +565,159 @@ Apps/MoldWing/
 
 ---
 
-## 十一、Qt 相关技术要点
+## 十一、M8 多模型支持方案（方案B：复合面ID）
+
+### 方案概述
+
+采用**复合面ID**方案实现跨模型选择和编辑：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  复合ID编码：高8位=meshId, 低24位=faceId                      │
+│  uint32_t compositeId = (meshId << 24) | faceId             │
+│                                                             │
+│  支持：最多 256 个模型，每个模型最多 16,777,215 个面          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 实现步骤与验收标准
+
+| 步骤 | 功能 | 预计时间 | 验收方式 |
+|------|------|---------|---------|
+| **B1** | CompositeId 工具类 | 30min | 单元测试通过 |
+| **B2** | 多模型面拾取 | 1h | Alt+点击显示 "Mesh X, Face Y" |
+| **B3** | 跨模型框选 | 1.5h | 框选多个模型，状态栏显示总数 |
+| **B4** | 跨模型选择渲染 | 1.5h | 视觉确认两个模型都有橙色高亮 |
+| **B5** | 多纹理编辑缓冲区 | 2h | 从模型A克隆到模型B生效 |
+| **B6** | 模型选择导出 | 30min | 勾选导出对话框正确导出 |
+
+**总计：约 7 小时**
+
+### B1：CompositeId 工具类
+
+```cpp
+// Core/CompositeId.hpp
+struct CompositeId {
+    static constexpr uint32_t FACE_MASK = 0x00FFFFFF;
+
+    static uint32_t encode(uint8_t meshId, uint32_t faceId) {
+        return (uint32_t(meshId) << 24) | (faceId & FACE_MASK);
+    }
+
+    static uint8_t meshId(uint32_t id) { return uint8_t(id >> 24); }
+    static uint32_t faceId(uint32_t id) { return id & FACE_MASK; }
+
+    // 按模型分组
+    static std::map<uint8_t, std::vector<uint32_t>> group(
+        const std::unordered_set<uint32_t>& ids);
+};
+```
+
+**验收**：编写单元测试验证编码/解码正确性
+
+### B2：多模型面拾取
+
+扩展 `FacePicker`，支持遍历所有可见模型进行拾取：
+
+```cpp
+struct PickResult {
+    bool hit = false;
+    uint8_t meshId = 0;
+    uint32_t faceId = 0;
+    uint32_t compositeId() const;
+};
+
+PickResult pickPointMulti(const std::vector<MeshInstance>& meshes, int x, int y);
+```
+
+**验收**：Alt+点击不同模型，状态栏显示正确的 meshId 和 faceId
+
+### B3：跨模型框选
+
+扩展 `FacePicker::readFaceIDsInRectMulti()`，返回复合ID集合：
+
+```cpp
+std::unordered_set<uint32_t> readFaceIDsInRectMulti(
+    const std::vector<MeshInstance>& meshes,
+    int x, int y, int w, int h);
+```
+
+**验收**：框选覆盖两个模型，状态栏显示两个模型的面都被选中
+
+### B4：跨模型选择渲染
+
+扩展 `SelectionRenderer::renderMulti()`，按模型分组渲染高亮：
+
+```cpp
+void renderMulti(
+    const std::vector<MeshInstance>& meshes,
+    const std::unordered_set<uint32_t>& compositeIds,
+    const OrbitCamera& camera);
+```
+
+**验收**：视觉确认多个模型的选中面都显示橙色高亮
+
+### B5：多纹理编辑缓冲区
+
+每个模型独立的纹理编辑缓冲区：
+
+```cpp
+// DiligentWidget 改动
+std::vector<std::unique_ptr<TextureEditBuffer>> m_editBuffers;
+uint8_t m_cloneSourceMeshId = 0;  // 克隆源模型ID
+```
+
+**验收**：
+1. Alt+点击模型A设置克隆源
+2. 在模型B上绘制
+3. 模型B的纹理出现模型A的内容
+4. Ctrl+Z 撤销正确恢复
+
+### B6：模型选择导出
+
+导出对话框让用户勾选要导出的模型：
+
+```
+┌─────────────────────────────────────────┐
+│  导出模型                          [X]  │
+├─────────────────────────────────────────┤
+│  ☑ Model_A.obj     (15,234 faces)      │
+│  ☑ Model_B.obj     (8,102 faces)       │
+│  ☐ Model_C.obj     (12,445 faces)      │
+│                                         │
+│  输出目录: [浏览...]                     │
+│  [全选] [全不选] [导出] [取消]           │
+└─────────────────────────────────────────┘
+```
+
+**验收**：只勾选部分模型，输出目录只有对应的OBJ文件
+
+### 实现依赖关系
+
+```
+B1 ─────────────────────────────────────┐
+(CompositeId)                           │
+    │                                   │
+    ▼                                   │
+B2 ─────────────┐                       │
+(多模型拾取)     │                       │
+    │           │                       │
+    ▼           ▼                       │
+B3 ──────────► B4                       │
+(跨模型框选)   (选择渲染)                │
+                │                       │
+                ▼                       │
+              B5 ◄──────────────────────┘
+           (多纹理编辑)
+                │
+                ▼
+              B6
+           (模型选择导出)
+```
+
+---
+
+## 十二、Qt 相关技术要点
 
 ### CMake 配置
 
@@ -635,5 +787,5 @@ connect(m_undoStack, &QUndoStack::canUndoChanged,
 
 ---
 
-**文档版本**: 3.1 (Qt 方案 - M8 图层树与多模型管理 + 异步加载)
-**最后更新**: 2025-12-30
+**文档版本**: 3.2 (Qt 方案 - M8 多模型支持方案B：复合面ID)
+**最后更新**: 2025-12-31
