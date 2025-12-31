@@ -241,6 +241,10 @@ void MainWindow::setupDockWidgets()
     m_layerTree->setMinimumWidth(150);
     m_layerDock->setWidget(m_layerTree);
 
+    // M8: Connect visibility toggle signal
+    connect(m_layerTree, &QTreeWidget::itemChanged,
+            this, &MainWindow::onLayerVisibilityChanged);
+
     addDockWidget(Qt::LeftDockWidgetArea, m_layerDock);
 
     // Tabify layer dock with tool dock (make them share the same area)
@@ -940,9 +944,9 @@ void MainWindow::onModelLoadFinished()
     }
 
     // Get the loaded mesh from the future
-    m_currentMesh = m_loadWatcher.result();
+    auto loadedMesh = m_loadWatcher.result();
 
-    if (!m_currentMesh)
+    if (!loadedMesh)
     {
         MW_LOG_ERROR("加载模型失败");
         QMessageBox::critical(this, tr("Error"),
@@ -954,36 +958,61 @@ void MainWindow::onModelLoadFinished()
     QFileInfo fileInfo(m_loadingFilePath);
 
     LOG_INFO("模型加载成功: {} 顶点, {} 面",
-             m_currentMesh->vertexCount(), m_currentMesh->faceCount());
+             loadedMesh->vertexCount(), loadedMesh->faceCount());
 
-    // Load mesh into renderer
-    if (!m_viewport3D->loadMesh(m_currentMesh))
+    // M8: Use addMesh() for multi-model rendering
+    int meshIndex = m_viewport3D->addMesh(loadedMesh);
+
+    if (meshIndex < 0)
     {
-        MW_LOG_ERROR("加载网格到渲染器失败");
+        MW_LOG_ERROR("添加网格到渲染器失败");
         QMessageBox::critical(this, tr("Error"),
-            tr("Failed to load mesh into renderer"));
-        statusBar()->showMessage(tr("Failed to load mesh"));
+            tr("Failed to add mesh to renderer"));
+        statusBar()->showMessage(tr("Failed to add mesh"));
         return;
+    }
+
+    // Also keep legacy loadMesh for selection/texture editing (uses first mesh)
+    if (m_meshList.empty())
+    {
+        m_currentMesh = loadedMesh;
+        if (!m_viewport3D->loadMesh(loadedMesh))
+        {
+            // Non-fatal, multi-model rendering still works
+            LOG_WARN("Legacy loadMesh failed, but addMesh succeeded");
+        }
+    }
+    else
+    {
+        // Update current mesh reference
+        m_currentMesh = loadedMesh;
     }
 
     // Update property panel
     m_propertyLabel->setText(tr("Model: %1\nVertices: %2\nFaces: %3")
         .arg(fileInfo.fileName())
-        .arg(m_currentMesh->vertexCount())
-        .arg(m_currentMesh->faceCount()));
+        .arg(loadedMesh->vertexCount())
+        .arg(loadedMesh->faceCount()));
 
     // Enable save and export actions
     m_saveAction->setEnabled(true);
     m_exportAction->setEnabled(true);
 
     // M8: Add to mesh list and layer tree (append mode)
-    m_meshList.push_back(m_currentMesh);
+    m_meshList.push_back(loadedMesh);
 
+    // Block signals to prevent triggering onLayerVisibilityChanged during setup
+    m_layerTree->blockSignals(true);
     QTreeWidgetItem* layerItem = new QTreeWidgetItem(m_layerTree);
     layerItem->setText(0, fileInfo.fileName());
     layerItem->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
+    // M8: Add checkbox for visibility control
+    layerItem->setFlags(layerItem->flags() | Qt::ItemIsUserCheckable);
+    layerItem->setCheckState(0, Qt::Checked);  // Visible by default
+    layerItem->setData(0, Qt::UserRole, meshIndex);  // Store mesh index (from addMesh)
     m_layerTree->addTopLevelItem(layerItem);
     m_layerTree->setCurrentItem(layerItem);
+    m_layerTree->blockSignals(false);
 
     // Update window title with model count
     if (m_meshList.size() == 1)
@@ -995,12 +1024,56 @@ void MainWindow::onModelLoadFinished()
         setWindowTitle(tr("MoldWing - %1 models loaded").arg(m_meshList.size()));
     }
 
+    // Fit camera to all loaded models (compute combined bounding box)
+    BoundingBox combinedBounds;
+    combinedBounds.reset();
+    for (const auto& mesh : m_meshList)
+    {
+        if (mesh)
+        {
+            const auto& b = mesh->bounds;
+            combinedBounds.expand(b.min[0], b.min[1], b.min[2]);
+            combinedBounds.expand(b.max[0], b.max[1], b.max[2]);
+        }
+    }
+    m_viewport3D->camera().fitToModel(
+        combinedBounds.min[0], combinedBounds.min[1], combinedBounds.min[2],
+        combinedBounds.max[0], combinedBounds.max[1], combinedBounds.max[2]);
+
     // Clear undo stack for new file
     m_undoStack->clear();
 
-    statusBar()->showMessage(tr("Loaded: %1 vertices, %2 faces")
-        .arg(m_currentMesh->vertexCount())
-        .arg(m_currentMesh->faceCount()));
+    statusBar()->showMessage(tr("Loaded: %1 vertices, %2 faces (Total: %3 models)")
+        .arg(loadedMesh->vertexCount())
+        .arg(loadedMesh->faceCount())
+        .arg(m_meshList.size()));
+}
+
+// M8: Handle layer visibility toggle
+void MainWindow::onLayerVisibilityChanged(QTreeWidgetItem* item, int column)
+{
+    Q_UNUSED(column);
+
+    if (!item)
+        return;
+
+    // Get the mesh index from the item data
+    int meshIndex = item->data(0, Qt::UserRole).toInt();
+    bool isVisible = (item->checkState(0) == Qt::Checked);
+
+    LOG_DEBUG("Layer {} visibility changed to: {}", meshIndex, isVisible);
+
+    // M8: Use indexed setMeshVisible for multi-model support
+    m_viewport3D->setMeshVisible(meshIndex, isVisible);
+
+    if (isVisible)
+    {
+        statusBar()->showMessage(tr("Layer %1 visible").arg(item->text(0)), 2000);
+    }
+    else
+    {
+        statusBar()->showMessage(tr("Layer %1 hidden").arg(item->text(0)), 2000);
+    }
 }
 
 } // namespace MoldWing

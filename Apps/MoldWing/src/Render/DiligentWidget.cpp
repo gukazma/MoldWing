@@ -332,13 +332,23 @@ void DiligentWidget::render()
     m_pContext->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     m_pContext->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-    // Render mesh if loaded
-    if (m_meshRenderer.hasMesh())
+    // M8: Render all visible mesh instances
+    for (const auto& instance : m_meshInstances)
+    {
+        if (instance.visible && instance.renderer && instance.renderer->hasMesh())
+        {
+            instance.renderer->render(m_pContext, m_camera);
+        }
+    }
+
+    // Legacy: Render single mesh if no instances but legacy renderer has mesh
+    if (m_meshInstances.empty() && m_meshRenderer.hasMesh())
     {
         m_meshRenderer.render(m_pContext, m_camera);
     }
 
-    // Render selection highlight
+    // Render selection highlight (only when mesh is visible)
+    // TODO: Update for multi-mesh selection
     if (m_selectionRenderer.isInitialized() && m_selectionRenderer.hasSelection())
     {
         m_selectionRenderer.render(m_pContext, m_camera);
@@ -1686,6 +1696,137 @@ bool DiligentWidget::saveTexture(const QString& filePath)
     {
         MW_LOG_ERROR("Failed to save texture to: {}", filePath.toStdString());
         return false;
+    }
+}
+
+// M8: Mesh visibility control
+void DiligentWidget::setMeshVisible(int index, bool visible)
+{
+    if (index >= 0 && index < static_cast<int>(m_meshInstances.size()))
+    {
+        if (m_meshInstances[index].visible != visible)
+        {
+            m_meshInstances[index].visible = visible;
+            LOG_DEBUG("Mesh {} visibility set to: {}", index, visible);
+            update();  // Trigger repaint
+        }
+    }
+}
+
+bool DiligentWidget::isMeshVisible(int index) const
+{
+    if (index >= 0 && index < static_cast<int>(m_meshInstances.size()))
+    {
+        return m_meshInstances[index].visible;
+    }
+    return false;
+}
+
+int DiligentWidget::addMesh(std::shared_ptr<MeshData> mesh)
+{
+    if (!m_initialized || !mesh)
+        return -1;
+
+    MeshInstance instance;
+    instance.mesh = mesh;
+    instance.renderer = std::make_unique<MeshRenderer>();
+    instance.visible = true;
+    instance.id = static_cast<int>(m_meshInstances.size());
+
+    // Initialize renderer
+    if (!instance.renderer->initialize(m_pDevice, m_pSwapChain))
+    {
+        MW_LOG_ERROR("Failed to initialize mesh renderer for instance {}", instance.id);
+        return -1;
+    }
+
+    // Apply current render mode settings
+    instance.renderer->setWhiteModelMode(m_forceWhiteModel);
+    instance.renderer->setShowWireframe(m_showWireframe);
+
+    // Load mesh into renderer
+    if (!instance.renderer->loadMesh(*mesh))
+    {
+        MW_LOG_ERROR("Failed to load mesh into renderer for instance {}", instance.id);
+        return -1;
+    }
+
+    int index = instance.id;
+    m_meshInstances.push_back(std::move(instance));
+
+    LOG_INFO("Added mesh instance {}: {} vertices, {} faces",
+             index, mesh->vertexCount(), mesh->faceCount());
+
+    return index;
+}
+
+void DiligentWidget::clearAllMeshes()
+{
+    m_meshInstances.clear();
+    m_currentMesh = nullptr;
+    m_meshPtr.reset();
+    m_editBuffer.reset();
+
+    // Clear selection
+    if (m_selectionSystem)
+    {
+        m_selectionSystem->clearSelection();
+        m_selectionSystem->setFaceCount(0);
+    }
+
+    // Clear face picker
+    if (m_facePicker.isInitialized())
+    {
+        // FacePicker will be updated when new mesh is loaded
+    }
+
+    LOG_INFO("All meshes cleared");
+    update();
+}
+
+void DiligentWidget::setWhiteModelMode(bool enabled)
+{
+    if (m_forceWhiteModel != enabled)
+    {
+        m_forceWhiteModel = enabled;
+
+        // Apply to all mesh instances
+        for (auto& instance : m_meshInstances)
+        {
+            if (instance.renderer)
+            {
+                instance.renderer->setWhiteModelMode(enabled);
+            }
+        }
+
+        // Also apply to legacy renderer
+        m_meshRenderer.setWhiteModelMode(enabled);
+
+        LOG_DEBUG("White model mode set to: {}", enabled);
+        update();
+    }
+}
+
+void DiligentWidget::setShowWireframe(bool enabled)
+{
+    if (m_showWireframe != enabled)
+    {
+        m_showWireframe = enabled;
+
+        // Apply to all mesh instances
+        for (auto& instance : m_meshInstances)
+        {
+            if (instance.renderer)
+            {
+                instance.renderer->setShowWireframe(enabled);
+            }
+        }
+
+        // Also apply to legacy renderer
+        m_meshRenderer.setShowWireframe(enabled);
+
+        LOG_DEBUG("Wireframe mode set to: {}", enabled);
+        update();
     }
 }
 

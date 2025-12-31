@@ -43,6 +43,15 @@
 namespace MoldWing
 {
 
+// M8: Mesh instance for multi-model rendering
+struct MeshInstance
+{
+    std::shared_ptr<MeshData> mesh;
+    std::unique_ptr<MeshRenderer> renderer;
+    bool visible = true;
+    int id = -1;
+};
+
 class DiligentWidget : public QWidget
 {
     Q_OBJECT
@@ -53,8 +62,15 @@ public:
 
     bool isInitialized() const { return m_initialized; }
 
-    // Load mesh for rendering
+    // Load mesh for rendering (legacy single-mesh API, replaces all)
     bool loadMesh(std::shared_ptr<MeshData> mesh);
+
+    // M8: Multi-model API
+    int addMesh(std::shared_ptr<MeshData> mesh);  // Returns mesh index
+    void setMeshVisible(int index, bool visible);
+    bool isMeshVisible(int index) const;
+    int meshCount() const { return static_cast<int>(m_meshInstances.size()); }
+    void clearAllMeshes();
 
     // Get camera for external access
     OrbitCamera& camera() { return m_camera; }
@@ -77,13 +93,13 @@ public:
     TextureEditBuffer* editBuffer() { return m_editBuffer.get(); }
     const TextureEditBuffer* editBuffer() const { return m_editBuffer.get(); }
 
-    // 白模模式（强制无纹理渲染）
-    void setWhiteModelMode(bool enabled) { m_meshRenderer.setWhiteModelMode(enabled); }
-    bool isWhiteModelMode() const { return m_meshRenderer.isWhiteModelMode(); }
+    // 白模模式（强制无纹理渲染，应用到所有模型）
+    void setWhiteModelMode(bool enabled);
+    bool isWhiteModelMode() const { return m_forceWhiteModel; }
 
-    // 线框模式
-    void setShowWireframe(bool enabled) { m_meshRenderer.setShowWireframe(enabled); }
-    bool isShowWireframe() const { return m_meshRenderer.isShowWireframe(); }
+    // 线框模式（应用到所有模型）
+    void setShowWireframe(bool enabled);
+    bool isShowWireframe() const { return m_showWireframe; }
 
     // Interaction mode
     enum class InteractionMode
@@ -193,9 +209,14 @@ private:
     QElapsedTimer m_frameTimer;
 
     // Rendering
-    MeshRenderer m_meshRenderer;
     PivotIndicator m_pivotIndicator;
     OrbitCamera m_camera;
+
+    // M8: Multi-model rendering
+    std::vector<MeshInstance> m_meshInstances;
+    MeshRenderer m_meshRenderer;  // Legacy single renderer (for compatibility during transition)
+    bool m_forceWhiteModel = false;
+    bool m_showWireframe = false;
 
     // Selection system
     SelectionSystem* m_selectionSystem = nullptr;

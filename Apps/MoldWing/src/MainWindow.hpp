@@ -70,6 +70,9 @@ private slots:
     // 异步加载完成回调
     void onModelLoadFinished();
 
+    // M8: 图层可见性切换
+    void onLayerVisibilityChanged(QTreeWidgetItem* item, int column);
+
 private:
     void setupMenus();
     void setupToolBar();
