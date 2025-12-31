@@ -1,6 +1,7 @@
 /*
  *  MoldWing - Selection Renderer
  *  S2.4: Render selected faces with highlight overlay
+ *  M8: Support multi-mesh selection rendering
  */
 
 #pragma once
@@ -18,15 +19,33 @@
 #include <ShaderResourceBinding.h>
 
 #include <vector>
+#include <unordered_map>
 
 namespace MoldWing
 {
+
+/**
+ * @brief Per-mesh render buffers for selection highlight
+ */
+struct SelectionMeshBuffers
+{
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> vertexBuffer;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> indexBuffer;  // Dynamic buffer for selection indices
+    const MeshData* meshData = nullptr;
+    uint32_t meshId = 0;
+    uint32_t vertexCount = 0;
+    uint32_t maxIndexCount = 0;  // Max capacity of index buffer
+    std::vector<uint32_t> cachedIndices;
+    uint32_t currentIndexCount = 0;
+    bool dirty = false;
+};
 
 /**
  * @brief Renders selected faces with a highlight overlay
  *
  * Uses additive blending to overlay a highlight color on selected faces.
  * Renders selected faces slightly in front of the mesh to prevent z-fighting.
+ * M8: Supports multi-mesh rendering with composite face IDs.
  */
 class SelectionRenderer
 {
@@ -47,15 +66,29 @@ public:
     bool initialize(Diligent::IRenderDevice* pDevice, Diligent::ISwapChain* pSwapChain);
 
     /**
-     * @brief Load mesh data
+     * @brief Load mesh data (legacy single-mesh API, sets meshId=0)
      * @param mesh The mesh data
      * @return true if loading succeeded
      */
     bool loadMesh(const MeshData& mesh);
 
     /**
-     * @brief Update selection (rebuild selection index buffer)
-     * @param selectedFaces Set of selected face indices
+     * @brief Add a mesh with specified ID (M8 multi-mesh API)
+     * @param mesh The mesh data
+     * @param meshId The mesh ID (0-255)
+     * @return true if adding succeeded
+     */
+    bool addMesh(const MeshData& mesh, uint32_t meshId);
+
+    /**
+     * @brief Clear all loaded meshes
+     */
+    void clearMeshes();
+
+    /**
+     * @brief Update selection (rebuild selection index buffers)
+     * Supports both legacy single-mesh face IDs and M8 composite IDs
+     * @param selectedFaces Set of selected face indices (composite IDs for multi-mesh)
      */
     void updateSelection(const std::unordered_set<uint32_t>& selectedFaces);
 
@@ -74,7 +107,12 @@ public:
     /**
      * @brief Check if has selection to render
      */
-    bool hasSelection() const { return m_selectionIndexCount > 0; }
+    bool hasSelection() const;
+
+    /**
+     * @brief Get number of loaded meshes
+     */
+    size_t meshCount() const { return m_meshBuffers.size(); }
 
     /**
      * @brief Set highlight color (RGBA, 0-1)
@@ -89,18 +127,17 @@ private:
     // Pipeline
     Diligent::RefCntAutoPtr<Diligent::IPipelineState> m_pPSO;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> m_pSRB;
-
-    // Buffers
-    Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pVertexBuffer;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pSelectionIndexBuffer;  // Dynamic buffer for selected faces
     Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pConstantBuffer;
 
-    // Mesh data
+    // M8: Per-mesh buffers (indexed by meshId)
+    std::unordered_map<uint32_t, SelectionMeshBuffers> m_meshBuffers;
+
+    // Legacy single-mesh support (kept for backward compatibility)
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pVertexBuffer;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> m_pSelectionIndexBuffer;
     const MeshData* m_pMeshData = nullptr;
     uint32_t m_vertexCount = 0;
     uint32_t m_selectionIndexCount = 0;
-
-    // Cached selection indices for lazy GPU update
     std::vector<uint32_t> m_cachedSelectionIndices;
     bool m_selectionDirty = false;
 

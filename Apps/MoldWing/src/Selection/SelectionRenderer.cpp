@@ -1,10 +1,12 @@
 /*
  *  MoldWing - Selection Renderer Implementation
  *  S2.4: Render selected faces with highlight overlay
+ *  M8: Support multi-mesh selection rendering
  */
 
 #include "SelectionRenderer.hpp"
 #include "Core/Logger.hpp"
+#include "Core/CompositeId.hpp"
 
 #include <Graphics/GraphicsTools/interface/MapHelper.hpp>
 #include <cstring>
@@ -228,10 +230,18 @@ bool SelectionRenderer::createPipeline(IRenderDevice* pDevice, ISwapChain* pSwap
 
 bool SelectionRenderer::loadMesh(const MeshData& mesh)
 {
+    // Legacy API: add mesh with ID 0
+    return addMesh(mesh, 0);
+}
+
+bool SelectionRenderer::addMesh(const MeshData& mesh, uint32_t meshId)
+{
     if (!m_pDevice || mesh.vertices.empty())
         return false;
 
-    m_pMeshData = &mesh;
+    SelectionMeshBuffers buffers;
+    buffers.meshId = meshId;
+    buffers.meshData = &mesh;
 
     // Create vertex buffer
     BufferDesc vbDesc;
@@ -244,11 +254,11 @@ bool SelectionRenderer::loadMesh(const MeshData& mesh)
     vbData.pData = mesh.vertices.data();
     vbData.DataSize = vbDesc.Size;
 
-    m_pDevice->CreateBuffer(vbDesc, &vbData, &m_pVertexBuffer);
-    if (!m_pVertexBuffer)
+    m_pDevice->CreateBuffer(vbDesc, &vbData, &buffers.vertexBuffer);
+    if (!buffers.vertexBuffer)
         return false;
 
-    m_vertexCount = static_cast<uint32_t>(mesh.vertices.size());
+    buffers.vertexCount = static_cast<uint32_t>(mesh.vertices.size());
 
     // Create a dynamic index buffer for selection (max size = full mesh)
     BufferDesc ibDesc;
@@ -258,16 +268,107 @@ bool SelectionRenderer::loadMesh(const MeshData& mesh)
     ibDesc.BindFlags = BIND_INDEX_BUFFER;
     ibDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
 
-    m_pDevice->CreateBuffer(ibDesc, nullptr, &m_pSelectionIndexBuffer);
-    if (!m_pSelectionIndexBuffer)
+    m_pDevice->CreateBuffer(ibDesc, nullptr, &buffers.indexBuffer);
+    if (!buffers.indexBuffer)
         return false;
 
-    LOG_DEBUG("SelectionRenderer loaded mesh: {} vertices", m_vertexCount);
+    buffers.maxIndexCount = static_cast<uint32_t>(mesh.indices.size());
+
+    // Store in map
+    m_meshBuffers[meshId] = std::move(buffers);
+
+    // Also update legacy single-mesh buffers for backward compatibility
+    if (meshId == 0)
+    {
+        m_pMeshData = &mesh;
+        m_pVertexBuffer = m_meshBuffers[0].vertexBuffer;
+        m_pSelectionIndexBuffer = m_meshBuffers[0].indexBuffer;
+        m_vertexCount = m_meshBuffers[0].vertexCount;
+    }
+
+    LOG_DEBUG("SelectionRenderer added mesh {}: {} vertices", meshId, buffers.vertexCount);
     return true;
+}
+
+void SelectionRenderer::clearMeshes()
+{
+    m_meshBuffers.clear();
+    m_pMeshData = nullptr;
+    m_pVertexBuffer.Release();
+    m_pSelectionIndexBuffer.Release();
+    m_vertexCount = 0;
+    m_selectionIndexCount = 0;
+    m_cachedSelectionIndices.clear();
+    LOG_DEBUG("SelectionRenderer cleared all meshes");
 }
 
 void SelectionRenderer::updateSelection(const std::unordered_set<uint32_t>& selectedFaces)
 {
+    // M8: Check if we have multi-mesh buffers
+    if (!m_meshBuffers.empty())
+    {
+        // Multi-mesh mode: decode composite IDs and group by meshId
+
+        // Clear all mesh selection caches
+        for (auto& [id, buffers] : m_meshBuffers)
+        {
+            buffers.cachedIndices.clear();
+            buffers.currentIndexCount = 0;
+            buffers.dirty = false;
+        }
+
+        if (selectedFaces.empty())
+        {
+            m_selectionIndexCount = 0;
+            return;
+        }
+
+        // Group faces by meshId
+        std::unordered_map<uint32_t, std::vector<uint32_t>> facesByMesh;
+        for (uint32_t compositeId : selectedFaces)
+        {
+            uint32_t meshId = CompositeId::meshId(compositeId);
+            uint32_t faceId = CompositeId::faceId(compositeId);
+            facesByMesh[meshId].push_back(faceId);
+        }
+
+        // Build index lists for each mesh
+        uint32_t totalIndices = 0;
+        for (auto& [meshId, faceIds] : facesByMesh)
+        {
+            auto it = m_meshBuffers.find(meshId);
+            if (it == m_meshBuffers.end())
+                continue;
+
+            SelectionMeshBuffers& buffers = it->second;
+            if (!buffers.meshData)
+                continue;
+
+            buffers.cachedIndices.reserve(faceIds.size() * 3);
+
+            for (uint32_t faceIdx : faceIds)
+            {
+                uint32_t baseIdx = faceIdx * 3;
+                if (baseIdx + 2 < buffers.meshData->indices.size())
+                {
+                    buffers.cachedIndices.push_back(buffers.meshData->indices[baseIdx]);
+                    buffers.cachedIndices.push_back(buffers.meshData->indices[baseIdx + 1]);
+                    buffers.cachedIndices.push_back(buffers.meshData->indices[baseIdx + 2]);
+                }
+            }
+
+            buffers.currentIndexCount = static_cast<uint32_t>(buffers.cachedIndices.size());
+            buffers.dirty = true;
+            totalIndices += buffers.currentIndexCount;
+        }
+
+        m_selectionIndexCount = totalIndices;
+        LOG_DEBUG("Selection updated (multi-mesh): {} faces, {} total indices across {} meshes",
+                  selectedFaces.size(), totalIndices, facesByMesh.size());
+        return;
+    }
+
+    // Legacy single-mesh mode
     if (!m_pMeshData || !m_pSelectionIndexBuffer)
     {
         m_selectionIndexCount = 0;
@@ -305,19 +406,10 @@ void SelectionRenderer::updateSelection(const std::unordered_set<uint32_t>& sele
 
 void SelectionRenderer::render(IDeviceContext* pContext, const OrbitCamera& camera)
 {
-    if (!m_initialized || !m_pVertexBuffer || m_selectionIndexCount == 0)
+    if (!m_initialized || m_selectionIndexCount == 0)
         return;
 
-    // Update selection index buffer if dirty
-    if (m_selectionDirty && !m_cachedSelectionIndices.empty())
-    {
-        MapHelper<uint32_t> indices(pContext, m_pSelectionIndexBuffer, MAP_WRITE, MAP_FLAG_DISCARD);
-        std::memcpy(indices, m_cachedSelectionIndices.data(),
-                    m_cachedSelectionIndices.size() * sizeof(uint32_t));
-        m_selectionDirty = false;
-    }
-
-    // Update constant buffer
+    // Update constant buffer (shared across all meshes)
     {
         MapHelper<Constants> cb(pContext, m_pConstantBuffer, MAP_WRITE, MAP_FLAG_DISCARD);
 
@@ -343,6 +435,52 @@ void SelectionRenderer::render(IDeviceContext* pContext, const OrbitCamera& came
     pContext->SetPipelineState(m_pPSO);
     pContext->CommitShaderResources(m_pSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
+    // M8: Render all meshes with selections
+    if (!m_meshBuffers.empty())
+    {
+        for (auto& [meshId, buffers] : m_meshBuffers)
+        {
+            if (buffers.currentIndexCount == 0 || !buffers.vertexBuffer)
+                continue;
+
+            // Update index buffer if dirty
+            if (buffers.dirty && !buffers.cachedIndices.empty())
+            {
+                MapHelper<uint32_t> indices(pContext, buffers.indexBuffer, MAP_WRITE, MAP_FLAG_DISCARD);
+                std::memcpy(indices, buffers.cachedIndices.data(),
+                            buffers.cachedIndices.size() * sizeof(uint32_t));
+                buffers.dirty = false;
+            }
+
+            // Set buffers
+            IBuffer* pBuffs[] = {buffers.vertexBuffer};
+            pContext->SetVertexBuffers(0, 1, pBuffs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                        SET_VERTEX_BUFFERS_FLAG_RESET);
+            pContext->SetIndexBuffer(buffers.indexBuffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+            // Draw
+            DrawIndexedAttribs drawAttrs;
+            drawAttrs.IndexType = VT_UINT32;
+            drawAttrs.NumIndices = buffers.currentIndexCount;
+            drawAttrs.Flags = DRAW_FLAG_VERIFY_ALL;
+            pContext->DrawIndexed(drawAttrs);
+        }
+        return;
+    }
+
+    // Legacy single-mesh rendering
+    if (!m_pVertexBuffer)
+        return;
+
+    // Update selection index buffer if dirty
+    if (m_selectionDirty && !m_cachedSelectionIndices.empty())
+    {
+        MapHelper<uint32_t> indices(pContext, m_pSelectionIndexBuffer, MAP_WRITE, MAP_FLAG_DISCARD);
+        std::memcpy(indices, m_cachedSelectionIndices.data(),
+                    m_cachedSelectionIndices.size() * sizeof(uint32_t));
+        m_selectionDirty = false;
+    }
+
     // Set buffers
     IBuffer* pBuffs[] = {m_pVertexBuffer};
     pContext->SetVertexBuffers(0, 1, pBuffs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
@@ -355,6 +493,11 @@ void SelectionRenderer::render(IDeviceContext* pContext, const OrbitCamera& came
     drawAttrs.NumIndices = m_selectionIndexCount;
     drawAttrs.Flags = DRAW_FLAG_VERIFY_ALL;
     pContext->DrawIndexed(drawAttrs);
+}
+
+bool SelectionRenderer::hasSelection() const
+{
+    return m_selectionIndexCount > 0;
 }
 
 void SelectionRenderer::setHighlightColor(float r, float g, float b, float a)

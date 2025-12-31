@@ -246,14 +246,21 @@ MoldWing/
 |------|------|------|---------|
 | B1 | CompositeId 工具类 | ✅ | 编译时 static_assert 通过 |
 | B2 | 多模型面拾取 | ✅ | Alt+点击显示 Mesh:Face |
-| B3 | 跨模型框选 | ⏳ | 框选多模型都被选中 |
-| B4 | 跨模型选择渲染 | ⏳ | 多模型高亮显示 |
+| B3 | 跨模型框选 | ✅ | 框选多模型都被选中 |
+| B4 | 跨模型选择渲染 | ✅ | 多模型高亮显示 |
 | B5 | 多纹理编辑缓冲区 | ⏳ | 跨模型克隆生效 |
 | B6 | 模型选择导出 | ⏳ | 勾选导出正确 |
 
 **已完成**：
 - ✅ B1: CompositeId 工具类（Core/CompositeId.hpp）- 编码/解码/验证函数
 - ✅ B2: FacePicker 多模型复合ID渲染 - 着色器输出 (meshId << 24) | faceId
+- ✅ B3: 跨模型框选 - SelectionSystem 存储复合ID + 状态栏显示跨模型统计
+- ✅ B4: SelectionRenderer 多模型高亮 - addMesh/clearMeshes + 解码复合ID渲染
+- ✅ 所有选择模式多模型支持：
+  - 框选：直接使用 FacePicker 返回的复合ID
+  - 刷选：直接使用 FacePicker 返回的复合ID
+  - 套索：解码复合ID查找正确mesh计算面中心
+  - 连通选择：解码复合ID使用正确mesh邻接数据 + BFS结果转复合ID
 
 **实现依赖**：B1 → B2 → B3 → B4 → B5 → B6
 

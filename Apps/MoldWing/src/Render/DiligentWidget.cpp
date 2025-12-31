@@ -12,6 +12,9 @@
 #include <QContextMenuEvent>
 #include <QDebug>
 
+#include <queue>
+#include <cmath>
+
 // DiligentEngine - use loader for shared DLL
 #include "Graphics/GraphicsEngineD3D11/interface/EngineFactoryD3D11.h"
 
@@ -1265,24 +1268,47 @@ void DiligentWidget::endLassoSelect()
     std::unordered_set<uint32_t> uniqueFaceIDs(faceIDsInRect.begin(), faceIDsInRect.end());
 
     // For each face, project its center to screen space and check if inside polygon
-    for (uint32_t faceID : uniqueFaceIDs)
+    for (uint32_t compositeId : uniqueFaceIDs)
     {
-        if (faceID == FacePicker::INVALID_FACE_ID)
+        if (compositeId == FacePicker::INVALID_FACE_ID)
+            continue;
+
+        // M8: Decode composite ID to get meshId and faceId
+        uint32_t meshId = CompositeId::meshId(compositeId);
+        uint32_t faceId = CompositeId::faceId(compositeId);
+
+        // Find the mesh instance by meshId
+        const MeshData* meshData = nullptr;
+        for (const auto& instance : m_meshInstances)
+        {
+            if (static_cast<uint32_t>(instance.id) == meshId && instance.mesh)
+            {
+                meshData = instance.mesh.get();
+                break;
+            }
+        }
+
+        // Fallback to legacy single mesh if no instance found (meshId 0)
+        if (!meshData && meshId == 0 && m_currentMesh)
+        {
+            meshData = m_currentMesh;
+        }
+
+        if (!meshData)
             continue;
 
         // Get face center in world space
-        size_t faceIdx = faceID;
-        if (faceIdx >= m_currentMesh->faceCount())
+        if (faceId >= meshData->faceCount())
             continue;
 
         // Get face vertices
-        uint32_t i0 = m_currentMesh->indices[faceIdx * 3 + 0];
-        uint32_t i1 = m_currentMesh->indices[faceIdx * 3 + 1];
-        uint32_t i2 = m_currentMesh->indices[faceIdx * 3 + 2];
+        uint32_t i0 = meshData->indices[faceId * 3 + 0];
+        uint32_t i1 = meshData->indices[faceId * 3 + 1];
+        uint32_t i2 = meshData->indices[faceId * 3 + 2];
 
-        const auto& v0 = m_currentMesh->vertices[i0];
-        const auto& v1 = m_currentMesh->vertices[i1];
-        const auto& v2 = m_currentMesh->vertices[i2];
+        const auto& v0 = meshData->vertices[i0];
+        const auto& v1 = meshData->vertices[i1];
+        const auto& v2 = meshData->vertices[i2];
 
         // Calculate face center
         float centerX = (v0.position[0] + v1.position[0] + v2.position[0]) / 3.0f;
@@ -1303,7 +1329,7 @@ void DiligentWidget::endLassoSelect()
         // Check if point is inside the lasso polygon
         if (m_lassoPath.containsPoint(QPointF(pixelX, pixelY), Qt::OddEvenFill))
         {
-            selectedFaces.insert(faceID);
+            selectedFaces.insert(compositeId);
         }
     }
 
@@ -1383,7 +1409,7 @@ void DiligentWidget::setLinkAngleThreshold(float angle)
 
 void DiligentWidget::performLinkSelect(const QPoint& pos)
 {
-    if (!m_facePicker.isInitialized() || !m_facePicker.hasMesh() || !m_currentMesh)
+    if (!m_facePicker.isInitialized() || !m_facePicker.hasMesh())
         return;
 
     // Render ID buffer
@@ -1394,9 +1420,9 @@ void DiligentWidget::performLinkSelect(const QPoint& pos)
     int x = static_cast<int>(pos.x() * dpr);
     int y = static_cast<int>(pos.y() * dpr);
 
-    uint32_t seedFace = m_facePicker.readFaceID(m_pContext, x, y);
+    uint32_t compositeId = m_facePicker.readFaceID(m_pContext, x, y);
 
-    if (seedFace == FacePicker::INVALID_FACE_ID)
+    if (compositeId == FacePicker::INVALID_FACE_ID)
     {
         // Clicked on background - clear selection (if Replace mode)
         if (getSelectionOp() == SelectionOp::Replace)
@@ -1413,54 +1439,144 @@ void DiligentWidget::performLinkSelect(const QPoint& pos)
         return;
     }
 
-    SelectionOp op = getSelectionOp();
+    // M8: Decode composite ID to get meshId and faceId
+    uint32_t meshId = CompositeId::meshId(compositeId);
+    uint32_t seedFace = CompositeId::faceId(compositeId);
 
-    // Check if we have adjacency data
-    if (m_currentMesh->faceAdjacency.empty())
+    // Find the mesh instance by meshId
+    const MeshData* meshData = nullptr;
+    for (const auto& instance : m_meshInstances)
     {
-        LOG_WARN("Mesh has no adjacency data for link selection");
+        if (static_cast<uint32_t>(instance.id) == meshId && instance.mesh)
+        {
+            meshData = instance.mesh.get();
+            break;
+        }
+    }
+
+    // Fallback to legacy single mesh
+    if (!meshData && meshId == 0 && m_currentMesh)
+    {
+        meshData = m_currentMesh;
+    }
+
+    if (!meshData)
+    {
+        LOG_WARN("performLinkSelect: Mesh {} not found", meshId);
         return;
     }
 
-    // Perform connected selection with or without angle constraint
-    std::unordered_set<uint32_t> connectedFaces;
+    SelectionOp op = getSelectionOp();
 
-    if (m_linkAngleThreshold >= MAX_ANGLE_THRESHOLD - 0.01f)
+    // Check if we have adjacency data
+    if (meshData->faceAdjacency.empty())
     {
-        // No angle constraint - select all connected faces
-        connectedFaces = m_selectionSystem->selectLinked(
-            m_currentMesh->faceAdjacency, seedFace, op);
+        LOG_WARN("Mesh {} has no adjacency data for link selection", meshId);
+        return;
+    }
+
+    // Validate seed face
+    if (seedFace >= meshData->faceAdjacency.size())
+    {
+        LOG_WARN("performLinkSelect: Invalid seed face {} for mesh {}", seedFace, meshId);
+        return;
+    }
+
+    // Perform BFS to find connected faces within this mesh
+    std::unordered_set<uint32_t> connectedFaces;
+    std::queue<uint32_t> queue;
+    queue.push(seedFace);
+    connectedFaces.insert(seedFace);
+
+    bool useAngleConstraint = m_linkAngleThreshold < MAX_ANGLE_THRESHOLD - 0.01f;
+    float cosThreshold = 0.0f;
+    if (useAngleConstraint && !meshData->faceNormals.empty())
+    {
+        cosThreshold = std::cos(m_linkAngleThreshold * 3.14159265358979f / 180.0f);
     }
     else
     {
-        // With angle constraint
-        if (m_currentMesh->faceNormals.empty())
+        useAngleConstraint = false;  // No normals available
+    }
+
+    while (!queue.empty())
+    {
+        uint32_t current = queue.front();
+        queue.pop();
+
+        for (uint32_t neighbor : meshData->faceAdjacency[current])
         {
-            LOG_WARN("Mesh has no face normals for angle-based selection");
-            // Fall back to simple linked selection
-            connectedFaces = m_selectionSystem->selectLinked(
-                m_currentMesh->faceAdjacency, seedFace, op);
-        }
-        else
-        {
-            connectedFaces = m_selectionSystem->selectByAngle(
-                m_currentMesh->faceAdjacency,
-                m_currentMesh->faceNormals,
-                seedFace,
-                m_linkAngleThreshold,
-                op);
+            if (connectedFaces.find(neighbor) == connectedFaces.end())
+            {
+                bool include = true;
+
+                // Check angle constraint if enabled
+                if (useAngleConstraint && current < meshData->faceNormals.size() &&
+                    neighbor < meshData->faceNormals.size())
+                {
+                    const auto& currentNormal = meshData->faceNormals[current];
+                    const auto& neighborNormal = meshData->faceNormals[neighbor];
+                    float dot = currentNormal[0] * neighborNormal[0] +
+                                currentNormal[1] * neighborNormal[1] +
+                                currentNormal[2] * neighborNormal[2];
+                    include = (dot >= cosThreshold);
+                }
+
+                if (include)
+                {
+                    connectedFaces.insert(neighbor);
+                    queue.push(neighbor);
+                }
+            }
         }
     }
 
-    // Create undo command
-    if (m_undoStack && !connectedFaces.empty())
+    // Convert plain face IDs to composite IDs
+    std::vector<uint32_t> compositeIds;
+    compositeIds.reserve(connectedFaces.size());
+    for (uint32_t faceId : connectedFaces)
     {
-        auto finalSelection = m_selectionSystem->selectedFaces();
-        m_undoStack->push(new SelectFacesCommand(m_selectionSystem, finalSelection,
+        compositeIds.push_back(CompositeId::make(meshId, faceId));
+    }
+
+    // Apply selection with composite IDs
+    if (m_undoStack)
+    {
+        auto newSelection = m_selectionSystem->selectedFaces();
+        switch (op)
+        {
+            case SelectionOp::Replace:
+                newSelection.clear();
+                for (uint32_t id : compositeIds)
+                    newSelection.insert(id);
+                break;
+            case SelectionOp::Add:
+                for (uint32_t id : compositeIds)
+                    newSelection.insert(id);
+                break;
+            case SelectionOp::Subtract:
+                for (uint32_t id : compositeIds)
+                    newSelection.erase(id);
+                break;
+            case SelectionOp::Toggle:
+                for (uint32_t id : compositeIds)
+                {
+                    if (newSelection.count(id))
+                        newSelection.erase(id);
+                    else
+                        newSelection.insert(id);
+                }
+                break;
+        }
+        m_undoStack->push(new SelectFacesCommand(m_selectionSystem, newSelection,
                           QObject::tr("Link Select")));
     }
+    else
+    {
+        m_selectionSystem->select(compositeIds, op);
+    }
 
-    LOG_DEBUG("Link select: {} faces from seed {}", connectedFaces.size(), seedFace);
+    LOG_DEBUG("Link select: {} faces from mesh {} (seed {})", connectedFaces.size(), meshId, seedFace);
 }
 
 // Step 3: Texture painting methods
@@ -1770,6 +1886,12 @@ int DiligentWidget::addMesh(std::shared_ptr<MeshData> mesh)
         m_facePicker.addMesh(*mesh, static_cast<uint32_t>(instance.id), instance.visible);
     }
 
+    // M8: Add to SelectionRenderer for multi-mesh highlight
+    if (m_selectionRenderer.isInitialized())
+    {
+        m_selectionRenderer.addMesh(*mesh, static_cast<uint32_t>(instance.id));
+    }
+
     int index = instance.id;
     m_meshInstances.push_back(std::move(instance));
 
@@ -1797,6 +1919,12 @@ void DiligentWidget::clearAllMeshes()
     if (m_facePicker.isInitialized())
     {
         m_facePicker.clearMeshes();
+    }
+
+    // M8: Clear selection renderer meshes
+    if (m_selectionRenderer.isInitialized())
+    {
+        m_selectionRenderer.clearMeshes();
     }
 
     LOG_INFO("All meshes cleared");

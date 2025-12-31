@@ -35,6 +35,8 @@
 #include <QtConcurrent>
 #include <QFutureWatcher>
 
+#include <map>
+
 namespace MoldWing
 {
 
@@ -716,7 +718,8 @@ void MainWindow::onSelectionChanged()
     if (!m_viewport3D || !m_viewport3D->selectionSystem())
         return;
 
-    size_t count = m_viewport3D->selectionSystem()->selectionCount();
+    const auto& selectedFaces = m_viewport3D->selectionSystem()->selectedFaces();
+    size_t count = selectedFaces.size();
 
     if (count == 0)
     {
@@ -735,19 +738,49 @@ void MainWindow::onSelectionChanged()
     }
     else
     {
-        if (m_currentMesh)
+        // M8: Count faces per mesh using CompositeId
+        std::map<uint32_t, size_t> meshFaceCounts;
+        for (uint32_t compositeId : selectedFaces)
         {
-            m_propertyLabel->setText(tr("Model: %1\nVertices: %2\nFaces: %3\n\nSelected: %4 faces")
+            uint32_t meshId = CompositeId::meshId(compositeId);
+            meshFaceCounts[meshId]++;
+        }
+        size_t meshCount = meshFaceCounts.size();
+
+        // Build property panel text
+        QString propertyText;
+        if (meshCount > 1)
+        {
+            // Multi-mesh selection
+            propertyText = tr("Selected: %1 faces from %2 meshes\n\n").arg(count).arg(meshCount);
+            for (const auto& [meshId, faceCount] : meshFaceCounts)
+            {
+                propertyText += tr("  Mesh %1: %2 faces\n").arg(meshId).arg(faceCount);
+            }
+        }
+        else if (m_currentMesh)
+        {
+            propertyText = tr("Model: %1\nVertices: %2\nFaces: %3\n\nSelected: %4 faces")
                 .arg(windowTitle().section(" - ", 1))
                 .arg(m_currentMesh->vertexCount())
                 .arg(m_currentMesh->faceCount())
-                .arg(count));
+                .arg(count);
         }
         else
         {
-            m_propertyLabel->setText(tr("Selected: %1 faces").arg(count));
+            propertyText = tr("Selected: %1 faces").arg(count);
         }
-        statusBar()->showMessage(tr("%1 faces selected").arg(count));
+        m_propertyLabel->setText(propertyText);
+
+        // Update status bar
+        if (meshCount > 1)
+        {
+            statusBar()->showMessage(tr("%1 faces selected from %2 meshes").arg(count).arg(meshCount));
+        }
+        else
+        {
+            statusBar()->showMessage(tr("%1 faces selected").arg(count));
+        }
     }
 }
 
