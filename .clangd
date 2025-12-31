@@ -1,0 +1,18 @@
+CompileFlags:
+  CompilationDatabase: Builds/ninja-multi
+  Add:
+    - -Wno-unknown-warning-option
+  Remove:
+    - -W*
+
+Diagnostics:
+  UnusedIncludes: None
+  MissingIncludes: None
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
+
+Hover:
+  ShowAKA: true

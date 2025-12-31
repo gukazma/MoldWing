@@ -12,7 +12,7 @@
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": {
                     "type": "FILEPATH",
-                    "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+                    "value": "$env{VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake"
                 },
                 "VCPKG_TARGET_TRIPLET": "x64-windows"
             }
@@ -38,7 +38,8 @@
             "binaryDir": "${sourceDir}/Builds/${presetName}",
             "generator": "Ninja Multi-Config",
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/Builds/install/${presetName}"
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/Builds/install/${presetName}",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
         }
     ],
