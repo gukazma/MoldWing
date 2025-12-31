@@ -11,8 +11,10 @@
 #include "Core/CompositeId.hpp"  // M8: For Mesh:Face display
 #include "IO/MeshLoader.hpp"
 #include "IO/MeshExporter.hpp"
+#include "IO/OSGBExporter.hpp"  // M10: OSGB export
 #include "Selection/SelectionSystem.hpp"
 #include "Texture/TextureEditBuffer.hpp"
+#include "UI/OSGBExportDialog.hpp"  // M10: OSGB export dialog
 
 #include <QMenuBar>
 #include <QToolBar>
@@ -111,6 +113,12 @@ void MainWindow::setupMenus()
     m_exportAction->setShortcut(QKeySequence(tr("Ctrl+Shift+S")));
     connect(m_exportAction, &QAction::triggered, this, &MainWindow::onExportFile);
     m_exportAction->setEnabled(false);
+
+    // M10: Export OSGB action
+    m_exportOSGBAction = m_fileMenu->addAction(tr("Export &OSGB..."));
+    m_exportOSGBAction->setShortcut(QKeySequence(tr("Ctrl+Shift+G")));
+    connect(m_exportOSGBAction, &QAction::triggered, this, &MainWindow::onExportOSGB);
+    m_exportOSGBAction->setEnabled(false);
 
     m_fileMenu->addSeparator();
 
@@ -1334,6 +1342,7 @@ void MainWindow::onModelLoadFinished()
     // Enable save and export actions
     m_saveAction->setEnabled(true);
     m_exportAction->setEnabled(true);
+    m_exportOSGBAction->setEnabled(true);
 
     // M8: Add to mesh list and layer tree (append mode)
     m_meshList.push_back(loadedMesh);
@@ -1419,6 +1428,207 @@ void MainWindow::onLayerVisibilityChanged(QTreeWidgetItem* item, int column)
     {
         statusBar()->showMessage(tr("Layer %1 hidden").arg(item->text(0)), 2000);
     }
+}
+
+// M10: Export OSGB
+void MainWindow::onExportOSGB()
+{
+    if (m_meshList.empty())
+    {
+        QMessageBox::warning(this, tr("Export OSGB"), tr("No models to export."));
+        return;
+    }
+
+    OSGBExportDialog dialog(m_viewport3D, this);
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    auto selectedIndices = dialog.getSelectedModelIndices();
+    if (selectedIndices.empty())
+    {
+        QMessageBox::warning(this, tr("Export OSGB"), tr("No models selected for export."));
+        return;
+    }
+
+    QString outputDir = dialog.getOutputDirectory();
+    if (outputDir.isEmpty())
+    {
+        QMessageBox::warning(this, tr("Export OSGB"), tr("Please select an output directory."));
+        return;
+    }
+
+    auto options = dialog.getExportOptions();
+
+    m_osgbExportTasks.clear();
+    m_osgbExportedCount = 0;
+    m_osgbExportSuccessCount = 0;
+    m_osgbExportOutputDir = outputDir;
+    m_osgbSourceEpsg = options.sourceEpsg;
+    m_osgbTargetEpsg = options.targetEpsg;
+    m_osgbOriginX = options.srsOriginX;
+    m_osgbOriginY = options.srsOriginY;
+    m_osgbOriginZ = options.srsOriginZ;
+    m_osgbGenerateLOD = options.generateLOD;
+    m_osgbLodLevels = options.lodLevels;
+    m_osgbLodRatio1 = options.lodRatio1;
+    m_osgbLodRatio2 = options.lodRatio2;
+    m_osgbLodRatio3 = options.lodRatio3;
+
+    for (int meshIndex : selectedIndices)
+    {
+        if (meshIndex < 0 || meshIndex >= static_cast<int>(m_meshList.size()))
+            continue;
+
+        const auto* instance = m_viewport3D->getMeshInstance(meshIndex);
+        if (!instance || !instance->mesh)
+            continue;
+
+        OSGBExportTask task;
+        task.meshIndex = meshIndex;
+        task.mesh = instance->mesh;
+
+        if (!instance->mesh->sourcePath.empty())
+        {
+            QFileInfo fileInfo(QString::fromStdString(instance->mesh->sourcePath));
+            task.tileName = fileInfo.baseName();
+        }
+        else
+        {
+            task.tileName = QString("Tile_%1").arg(meshIndex, 3, 10, QChar('0'));
+        }
+
+        for (size_t texIdx = 0; texIdx < instance->editBuffers.size(); ++texIdx)
+        {
+            if (instance->editBuffers[texIdx] && instance->editBuffers[texIdx]->isValid())
+            {
+                task.editBuffers[static_cast<int>(texIdx)] =
+                    std::shared_ptr<TextureEditBuffer>(
+                        instance->editBuffers[texIdx].get(),
+                        [](TextureEditBuffer*) {}
+                    );
+            }
+        }
+
+        m_osgbExportTasks.push_back(task);
+    }
+
+    if (m_osgbExportTasks.empty())
+    {
+        QMessageBox::warning(this, tr("Export OSGB"), tr("No valid models to export."));
+        return;
+    }
+
+    m_osgbExportProgressDialog = new QProgressDialog(
+        tr("Exporting OSGB..."),
+        tr("Cancel"),
+        0,
+        static_cast<int>(m_osgbExportTasks.size()),
+        this
+    );
+    m_osgbExportProgressDialog->setWindowModality(Qt::WindowModal);
+    m_osgbExportProgressDialog->setMinimumDuration(0);
+    m_osgbExportProgressDialog->setValue(0);
+
+    connect(&m_osgbExportWatcher, &QFutureWatcher<bool>::finished,
+            this, &MainWindow::onOSGBExportFinished);
+
+    exportNextOSGBModel();
+}
+
+void MainWindow::exportNextOSGBModel()
+{
+    if (m_osgbExportProgressDialog && m_osgbExportProgressDialog->wasCanceled())
+    {
+        statusBar()->showMessage(tr("OSGB export cancelled."), 5000);
+        delete m_osgbExportProgressDialog;
+        m_osgbExportProgressDialog = nullptr;
+        m_osgbExportTasks.clear();
+        return;
+    }
+
+    if (m_osgbExportedCount >= static_cast<int>(m_osgbExportTasks.size()))
+    {
+        if (m_osgbExportProgressDialog)
+        {
+            delete m_osgbExportProgressDialog;
+            m_osgbExportProgressDialog = nullptr;
+        }
+
+        QString message = tr("OSGB export completed: %1/%2 models exported successfully.")
+                              .arg(m_osgbExportSuccessCount)
+                              .arg(m_osgbExportTasks.size());
+        statusBar()->showMessage(message, 5000);
+        QMessageBox::information(this, tr("Export Complete"), message);
+
+        m_osgbExportTasks.clear();
+        return;
+    }
+
+    const auto& task = m_osgbExportTasks[m_osgbExportedCount];
+
+    if (m_osgbExportProgressDialog)
+    {
+        m_osgbExportProgressDialog->setLabelText(
+            tr("Exporting: %1 (%2/%3)")
+                .arg(task.tileName)
+                .arg(m_osgbExportedCount + 1)
+                .arg(m_osgbExportTasks.size())
+        );
+    }
+
+    OSGBExportOptions options;
+    options.outputDirectory = m_osgbExportOutputDir;
+    options.sourceEpsg = m_osgbSourceEpsg;
+    options.targetEpsg = m_osgbTargetEpsg;
+    options.srsOriginX = m_osgbOriginX;
+    options.srsOriginY = m_osgbOriginY;
+    options.srsOriginZ = m_osgbOriginZ;
+    options.generateLOD = m_osgbGenerateLOD;
+    options.lodLevels = m_osgbLodLevels;
+    options.lodRatio1 = m_osgbLodRatio1;
+    options.lodRatio2 = m_osgbLodRatio2;
+    options.lodRatio3 = m_osgbLodRatio3;
+    options.tileName = task.tileName;
+
+    QFuture<bool> future = QtConcurrent::run([task, options]() {
+        OSGBExporter exporter;
+        return exporter.exportOSGB(
+            options.outputDirectory,
+            *task.mesh,
+            options,
+            task.editBuffers
+        );
+    });
+
+    m_osgbExportWatcher.setFuture(future);
+}
+
+void MainWindow::onOSGBExportFinished()
+{
+    bool success = m_osgbExportWatcher.result();
+
+    if (success)
+    {
+        m_osgbExportSuccessCount++;
+        LOG_INFO("OSGB export successful: {}",
+                 m_osgbExportTasks[m_osgbExportedCount].tileName.toStdString());
+    }
+    else
+    {
+        LOG_ERROR("OSGB export failed: {}",
+                  m_osgbExportTasks[m_osgbExportedCount].tileName.toStdString());
+    }
+
+    m_osgbExportedCount++;
+
+    if (m_osgbExportProgressDialog)
+    {
+        m_osgbExportProgressDialog->setValue(m_osgbExportedCount);
+    }
+
+    exportNextOSGBModel();
 }
 
 } // namespace MoldWing

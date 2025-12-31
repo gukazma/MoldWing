@@ -74,6 +74,8 @@ MoldWing/
     "eigen3",
     "stb",
     "spdlog",
+    "osg",
+    "proj",
     { "name": "qtbase", "features": ["widgets", "gui", "opengl", "jpeg", "png"] }
   ]
 }
@@ -93,7 +95,7 @@ MoldWing/
 | M7.5 | OBJ 带纹理导出 | ✅ 100% |
 | M8 | 多模型选择与编辑（方案B：复合面ID） | ✅ 100% |
 | M9 | 模型选择导出 | ✅ 100% |
-| M10 | OSGB 标准瓦片导出 | ⏳ 待开始 |
+| M10 | OSGB 标准瓦片导出 | ✅ 100% |
 | M11 | 橡皮擦工具 | ⏳ 待开始 |
 | M12 | 颜色调整 | ⏳ 待开始 |
 | M13 | 几何修复（孔洞/非流形） | ⏳ 待开始 |
@@ -383,14 +385,36 @@ void MainWindow::onModelLoadComplete() {
 
 **说明**：M9 功能已在 M8 B6 中实现（ExportDialog）
 
-### M10 待实现：OSGB 标准瓦片导出
+### M10 已完成：OSGB 标准瓦片导出
 
-**功能目标**：将 OBJ 导出为标准倾斜摄影瓦片目录结构
+**功能目标**：将 OBJ 导出为标准倾斜摄影瓦片目录结构，支持 LOD 和地理坐标系
 
-- ⏳ OSGB 导出菜单项
-- ⏳ 单个 OBJ → OSGB 转换
-- ⏳ 标准瓦片目录结构（Data/tile_xxx/xxx.osgb）
-- ⏳ 批量 OSGB 导出
+**新增依赖**：
+- osg (OpenSceneGraph) - OSGB 文件写入
+- proj (PROJ) - 地理坐标系转换
+
+**已完成功能**：
+- ✅ File → Export OSGB 菜单项（Ctrl+Shift+G）
+- ✅ OSGBExportDialog 导出对话框
+  - 模型选择列表
+  - 源/目标坐标系选择（EPSG 代码）
+  - SRS Origin 设置
+  - LOD 配置（层数、简化比例）
+- ✅ CoordinateSystem 坐标系管理
+  - 常用 EPSG 代码（4326/4490/UTM）
+  - PROJ 坐标转换
+- ✅ OSGBExporter 导出器
+  - MeshData → osg::Geometry 转换
+  - 纹理绑定到 StateSet
+  - LOD 自动生成（osgUtil::Simplifier）
+  - 标准目录结构（Data/Tile_+XXX_+YYY/）
+  - metadata.xml 生成
+- ✅ 批量异步导出 + 进度显示
+
+**新增文件**：
+- IO/CoordinateSystem.hpp/cpp
+- IO/OSGBExporter.hpp/cpp
+- UI/OSGBExportDialog.hpp/cpp
 
 ### M11 待实现：橡皮擦工具
 
@@ -478,6 +502,7 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 | Ctrl+Shift+O | 导入文件夹（批量导入） |
 | Ctrl+S | 保存 |
 | Ctrl+Shift+S | 导出（Export As） |
+| Ctrl+Shift+G | 导出 OSGB |
 | Ctrl+A | 全选 |
 | Ctrl+D | 取消选择 |
 | Ctrl+Shift+I | 反选 |
@@ -506,4 +531,4 @@ tabifyDockWidget(dock1, dock2);  // 标签化
 ---
 
 **最后更新**: 2025-12-31
-**项目版本**: 0.1-dev (Qt 方案) - M8 方案B 进行中
+**项目版本**: 0.1-dev (Qt 方案) - M10 OSGB 导出完成

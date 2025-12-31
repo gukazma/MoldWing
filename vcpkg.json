@@ -8,6 +8,8 @@
     "eigen3",
     "stb",
     "spdlog",
+    "osg",
+    "proj",
     {
       "name": "qtbase",
       "default-features": false,

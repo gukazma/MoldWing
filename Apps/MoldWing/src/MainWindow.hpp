@@ -84,6 +84,11 @@ private slots:
     void exportNextModel();
     void onExportFinished();
 
+    // M10: OSGB 导出
+    void onExportOSGB();
+    void exportNextOSGBModel();
+    void onOSGBExportFinished();
+
 private:
     void setupMenus();
     void setupToolBar();
@@ -135,6 +140,7 @@ private:
     QAction* m_importFolderAction = nullptr;  // M8.1.1: 文件夹批量导入
     QAction* m_saveAction = nullptr;
     QAction* m_exportAction = nullptr;  // M7.5: Export OBJ with textures
+    QAction* m_exportOSGBAction = nullptr;  // M10: Export OSGB tiles
     QAction* m_exitAction = nullptr;
     QAction* m_undoAction = nullptr;
     QAction* m_redoAction = nullptr;
@@ -187,6 +193,31 @@ private:
     QString m_exportOutputDir;
     QFutureWatcher<bool> m_exportWatcher;
     QProgressDialog* m_exportProgressDialog = nullptr;
+
+    // M10: OSGB 异步导出状态
+    struct OSGBExportTask
+    {
+        int meshIndex;
+        QString tileName;
+        std::shared_ptr<MeshData> mesh;
+        std::unordered_map<int, std::shared_ptr<TextureEditBuffer>> editBuffers;
+    };
+    std::vector<OSGBExportTask> m_osgbExportTasks;
+    int m_osgbExportedCount = 0;
+    int m_osgbExportSuccessCount = 0;
+    QString m_osgbExportOutputDir;
+    int m_osgbSourceEpsg = 0;
+    int m_osgbTargetEpsg = 4326;
+    double m_osgbOriginX = 0.0;
+    double m_osgbOriginY = 0.0;
+    double m_osgbOriginZ = 0.0;
+    bool m_osgbGenerateLOD = true;
+    int m_osgbLodLevels = 3;
+    float m_osgbLodRatio1 = 0.5f;
+    float m_osgbLodRatio2 = 0.25f;
+    float m_osgbLodRatio3 = 0.1f;
+    QFutureWatcher<bool> m_osgbExportWatcher;
+    QProgressDialog* m_osgbExportProgressDialog = nullptr;
 };
 
 } // namespace MoldWing

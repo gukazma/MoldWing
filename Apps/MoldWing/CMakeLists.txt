@@ -21,6 +21,16 @@ find_package(assimp CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 
 # =============================================================================
+# Find OpenSceneGraph (OSGB export) - vcpkg uses unofficial-osg
+# =============================================================================
+find_package(unofficial-osg CONFIG REQUIRED)
+
+# =============================================================================
+# Find PROJ (coordinate system transformation)
+# =============================================================================
+find_package(PROJ CONFIG REQUIRED)
+
+# =============================================================================
 # Source files
 # =============================================================================
 set(MAIN_SOURCES
@@ -71,11 +81,15 @@ set(CORE_HEADERS
 set(IO_SOURCES
     src/IO/MeshLoader.cpp
     src/IO/MeshExporter.cpp
+    src/IO/CoordinateSystem.cpp
+    src/IO/OSGBExporter.cpp
 )
 
 set(IO_HEADERS
     src/IO/MeshLoader.hpp
     src/IO/MeshExporter.hpp
+    src/IO/CoordinateSystem.hpp
+    src/IO/OSGBExporter.hpp
 )
 
 set(COMMANDS_HEADERS
@@ -110,6 +124,14 @@ set(TEXTURE_HEADERS
     src/Texture/TextureEditTool.hpp
 )
 
+set(UI_SOURCES
+    src/UI/OSGBExportDialog.cpp
+)
+
+set(UI_HEADERS
+    src/UI/OSGBExportDialog.hpp
+)
+
 # Combine all sources
 set(ALL_SOURCES
     ${MAIN_SOURCES}
@@ -118,6 +140,7 @@ set(ALL_SOURCES
     ${IO_SOURCES}
     ${SELECTION_SOURCES}
     ${TEXTURE_SOURCES}
+    ${UI_SOURCES}
 )
 
 set(ALL_HEADERS
@@ -128,6 +151,7 @@ set(ALL_HEADERS
     ${COMMANDS_HEADERS}
     ${SELECTION_HEADERS}
     ${TEXTURE_HEADERS}
+    ${UI_HEADERS}
 )
 
 # =============================================================================
@@ -187,6 +211,14 @@ target_link_libraries(MoldWing PRIVATE
 
     # Logging
     spdlog::spdlog
+
+    # OpenSceneGraph (OSGB export) - vcpkg unofficial targets
+    unofficial::osg::osg
+    unofficial::osg::osgDB
+    unofficial::osg::osgUtil
+
+    # PROJ (coordinate system)
+    PROJ::proj
 )
 
 # =============================================================================
@@ -325,6 +357,48 @@ if(WIN32)
             "$<TARGET_FILE_DIR:MoldWing>"
         COMMENT "Copying libjpeg DLL..."
     )
+
+    # Copy OpenSceneGraph core DLLs
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_BIN_DIR}/OpenThreads$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/osg$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/osgDB$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/osgUtil$<$<CONFIG:Debug>:d>.dll"
+            "$<TARGET_FILE_DIR:MoldWing>"
+        COMMENT "Copying OpenSceneGraph DLLs..."
+    )
+
+    # Copy OSG plugins directory for OSGB export
+    set(OSG_PLUGINS_DIR "${VCPKG_INSTALLED_DIR}/$<$<CONFIG:Debug>:debug/>plugins/osgPlugins-3.6.5")
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:MoldWing>/osgPlugins-3.6.5"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${OSG_PLUGINS_DIR}/osgdb_osg$<$<CONFIG:Debug>:d>.dll"
+            "${OSG_PLUGINS_DIR}/osgdb_jpeg$<$<CONFIG:Debug>:d>.dll"
+            "${OSG_PLUGINS_DIR}/osgdb_png$<$<CONFIG:Debug>:d>.dll"
+            "${OSG_PLUGINS_DIR}/osgdb_tiff$<$<CONFIG:Debug>:d>.dll"
+            "${OSG_PLUGINS_DIR}/osgdb_serializers_osg$<$<CONFIG:Debug>:d>.dll"
+            "${OSG_PLUGINS_DIR}/osgdb_serializers_osgutil$<$<CONFIG:Debug>:d>.dll"
+            "${OSG_PLUGINS_DIR}/osgdb_deprecated_osg$<$<CONFIG:Debug>:d>.dll"
+            "$<TARGET_FILE_DIR:MoldWing>/osgPlugins-3.6.5/"
+        COMMENT "Copying OSG plugins..."
+    )
+
+    # Copy PROJ DLLs and dependencies
+    add_custom_command(TARGET MoldWing POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VCPKG_BIN_DIR}/proj_9$<$<CONFIG:Debug>:_d>.dll"
+            "${VCPKG_BIN_DIR}/sqlite3.dll"
+            "${VCPKG_BIN_DIR}/tiff$<$<CONFIG:Debug>:d>.dll"
+            "${VCPKG_BIN_DIR}/libcurl$<$<CONFIG:Debug>:-d>.dll"
+            "${VCPKG_BIN_DIR}/libcrypto-3-x64.dll"
+            "${VCPKG_BIN_DIR}/libssl-3-x64.dll"
+            "${VCPKG_BIN_DIR}/liblzma.dll"
+            "${VCPKG_BIN_DIR}/libexpat$<$<CONFIG:Debug>:d>.dll"
+            "$<TARGET_FILE_DIR:MoldWing>"
+        COMMENT "Copying PROJ DLLs..."
+    )
 endif()
 
 # =============================================================================
@@ -339,3 +413,4 @@ source_group("src/IO" FILES ${IO_SOURCES} ${IO_HEADERS})
 source_group("src/Commands" FILES ${COMMANDS_HEADERS})
 source_group("src/Selection" FILES ${SELECTION_SOURCES} ${SELECTION_HEADERS})
 source_group("src/Texture" FILES ${TEXTURE_SOURCES} ${TEXTURE_HEADERS})
+source_group("src/UI" FILES ${UI_SOURCES} ${UI_HEADERS})
