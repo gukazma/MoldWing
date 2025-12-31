@@ -436,15 +436,27 @@ void MainWindow::onModelLoadComplete() {
 
 ## 构建命令
 
+**默认使用 Ninja 构建**（推荐，增量编译更快）：
+
 ```bash
 # 配置
+cmake --preset ninja-multi
+
+# 编译 Debug
+cmake --build --preset ninja-debug
+
+# 编译 Release
+cmake --build --preset ninja-release
+
+# 编译单个目标
+cmake --build --preset ninja-debug --target MoldWing
+```
+
+备用 Visual Studio 构建：
+
+```bash
 cmake --preset vs2022-x64
-
-# 编译
 cmake --build --preset vs2022-x64-debug
-
-# 编译 MoldWing
-cmake --build --preset vs2022-x64-debug --target MoldWing
 ```
 
 ## 开发策略

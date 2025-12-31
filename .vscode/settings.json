@@ -2,5 +2,22 @@
     "cmake.configureOnEdit": false,
     "cmake.configureArgs" : [
         // "-DCONAN_REMOTE=artifactory"
+    ],
+
+    // Disable Microsoft C/C++ IntelliSense (conflicts with clangd)
+    "C_Cpp.intelliSenseEngine": "disabled",
+
+    // clangd settings
+    "clangd.path": "clangd",
+    "clangd.arguments": [
+        "--background-index",
+        "--clang-tidy",
+        "--completion-style=detailed",
+        "--header-insertion=iwyu",
+        "--pch-storage=memory",
+        "-j=8"
+    ],
+    "clangd.fallbackFlags": [
+        "-std=c++17"
     ]
 }
