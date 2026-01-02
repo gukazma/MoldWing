@@ -20,7 +20,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR}/bin)
 # DiligentEngine Integration
 # =============================================================================
 # Configure DiligentEngine options before adding subdirectory
-set(DILIGENT_BUILD_SAMPLES ON CACHE BOOL "Build DiligentSamples module")
+set(DILIGENT_BUILD_SAMPLES OFF CACHE BOOL "Build DiligentSamples module")
 set(DILIGENT_BUILD_TOOLS ON CACHE BOOL "Build DiligentTools module")
 set(DILIGENT_BUILD_FX ON CACHE BOOL "Build DiligentFX module")
 
